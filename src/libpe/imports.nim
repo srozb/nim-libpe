@@ -3,11 +3,10 @@ import strutils
 import error
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-
-
 {.pragma: impimportsHdr,
   header: "libpe/libpe/include/libpe/imports.h".}
 {.experimental: "codeReordering".}
+
 type
   pe_imported_function_t* {.bycopy, importc, impimportsHdr.} = object
     name*: cstring
@@ -18,18 +17,12 @@ type
     err*: pe_err_e
     name*: cstring
     functions_count*: uint32
-    functions*: ptr UncheckedArray[pe_imported_function_t] 
-                      ## ```
-                      ##   array of imported functions
-                      ## ```
-  
+    functions*: ptr UncheckedArray[pe_imported_function_t]   ##   array of imported functions
+
   pe_imports_t* {.bycopy, importc, impimportsHdr.} = object
     err*: pe_err_e
     dll_count*: uint32
-    dlls*: ptr UncheckedArray[pe_imported_dll_t] 
-                      ## ```
-                      ##   array of DLLs
-                      ## ```
+    dlls*: ptr UncheckedArray[pe_imported_dll_t]   ##   array of DLLs
   
 proc pe_imports_dealloc*(imports: ptr pe_imports_t) {.importc, cdecl,
     impimportsHdr.}

@@ -25,13 +25,9 @@ Icon
 .AppleDesktop
 Network Trash Folder
 Temporary Items
-.apdisk
-
-### macOS Patch ###
+.apdisk  ### macOS Patch ###
 # iCloud generated files
-*.icloud
-
-### Nim ###
+*.icloud  ### Nim ###
 nimcache/
 nimblecache/
 htmldocs/

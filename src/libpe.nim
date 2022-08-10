@@ -1,63 +1,23 @@
-{.push hint[ConvFromXtoItselfNotNeeded]: off.}
-import macros
-
+import libpe/def_enums
 import libpe/hdr_dos
 import libpe/hdr_coff
 import libpe/hdr_optional
 import libpe/directories
 import libpe/sections
-import libpe/pe
+# import libpe/pe
 import libpe/imports
 import libpe/exports
 import libpe/error
 import libpe/hashes
 import libpe/resources
 
-macro defineEnum(typ: untyped): untyped =
-  result = newNimNode(nnkStmtList)
 
-  # Enum mapped to distinct cint
-  result.add quote do:
-    type `typ`* = distinct cint
-
-  for i in ["+", "-", "*", "div", "mod", "shl", "shr", "or", "and", "xor", "<", "<=", "==", ">", ">="]:
-    let
-      ni = newIdentNode(i)
-      typout = if i[0] in "<=>": newIdentNode("bool") else: typ # comparisons return bool
-    if i[0] == '>': # cannot borrow `>` and `>=` from templates
-      let
-        nopp = if i.len == 2: newIdentNode("<=") else: newIdentNode("<")
-      result.add quote do:
-        proc `ni`*(x: `typ`, y: cint): `typout` = `nopp`(y, x)
-        proc `ni`*(x: cint, y: `typ`): `typout` = `nopp`(y, x)
-        proc `ni`*(x, y: `typ`): `typout` = `nopp`(y, x)
-    else:
-      result.add quote do:
-        proc `ni`*(x: `typ`, y: cint): `typout` {.borrow.}
-        proc `ni`*(x: cint, y: `typ`): `typout` {.borrow.}
-        proc `ni`*(x, y: `typ`): `typout` {.borrow.}
-    result.add quote do:
-      proc `ni`*(x: `typ`, y: int): `typout` = `ni`(x, y.cint)
-      proc `ni`*(x: int, y: `typ`): `typout` = `ni`(x.cint, y)
-
-  let
-    divop = newIdentNode("/")   # `/`()
-    dlrop = newIdentNode("$")   # `$`()
-    notop = newIdentNode("not") # `not`()
-  result.add quote do:
-    proc `divop`*(x, y: `typ`): `typ` = `typ`((x.float / y.float).cint)
-    proc `divop`*(x: `typ`, y: cint): `typ` = `divop`(x, `typ`(y))
-    proc `divop`*(x: cint, y: `typ`): `typ` = `divop`(`typ`(x), y)
-    proc `divop`*(x: `typ`, y: int): `typ` = `divop`(x, y.cint)
-    proc `divop`*(x: int, y: `typ`): `typ` = `divop`(x.cint, y)
-
-    proc `dlrop`*(x: `typ`): string {.borrow.}
-    proc `notop`*(x: `typ`): `typ` {.borrow.}
-
+{.push hint[ConvFromXtoItselfNotNeeded]: off.}
 
 {.pragma: imppeHdr,
   header: "libpe/libpe/include/libpe/pe.h".}
 {.experimental: "codeReordering".}
+
 defineEnum(pe_option_e)
 const
   MAGIC_MZ* = 0x00005A4D
@@ -69,71 +29,51 @@ const
   IMAGE_ORDINAL_FLAG64* = 0x8000000000000000'u64
   SIGNATURE_NE* = 0x0000454E
   SIGNATURE_PE* = 0x00004550
-  LIBPE_OPT_NOCLOSE_FD* = ((1 shl typeof(1)(0))).pe_option_e ## ```
-                                                             ##   Keeps stream open for further usage.
-                                                             ## ```
-  LIBPE_OPT_OPEN_RW* = ((1 shl typeof(1)(1))).pe_option_e ## ```
-                                                          ##   Open file for read and writing
-                                                          ## ```
+  LIBPE_OPT_NOCLOSE_FD* = ((1 shl typeof(1)(0))).pe_option_e  ##   Keeps stream open for further usage.
+
+  LIBPE_OPT_OPEN_RW* = ((1 shl typeof(1)(1))).pe_option_e  ##   Open file for read and writing
+
 
 type
-  pe_options_e* {.importc, imppeHdr.} = uint16 ## ```
-                                               ##   bitmasked pe_option_e values
-                                               ## ```
+  pe_options_e* {.importc, imppeHdr.} = uint16  ##   bitmasked pe_option_e values
+
   pe_file_t* {.bycopy, importc, imppeHdr.} = object
-    dos_hdr*: ptr IMAGE_DOS_HEADER ## ```
-                                   ##   DOS header
-                                   ## ```
-    signature*: uint32       ## ```
-                             ##   Signature
-                             ## ```
-    coff_hdr*: ptr IMAGE_COFF_HEADER ## ```
-                                     ##   COFF header
-                                     ## ```
-    optional_hdr_ptr*: pointer ## ```
-                               ##   Optional header
-                               ## ```
-    optional_hdr*: IMAGE_OPTIONAL_HEADER ## ```
-                                         ##   Directories
-                                         ## ```
-    num_directories*: uint32 ## ```
-                             ##   Directories
-                             ## ```
+    dos_hdr*: ptr IMAGE_DOS_HEADER  ##   DOS header
+
+    signature*: uint32  ##   Signature
+
+    coff_hdr*: ptr IMAGE_COFF_HEADER  ##   COFF header
+
+    optional_hdr_ptr*: pointer  ##   Optional header
+
+    optional_hdr*: IMAGE_OPTIONAL_HEADER  ##   Directories
+
+    num_directories*: uint32  ##   Directories
+
     directories_ptr*: pointer
-    directories*: ptr ptr IMAGE_DATA_DIRECTORY ## ```
-                                               ##   array up to MAX_DIRECTORIES
-                                               ##      Sections
-                                               ## ```
-    num_sections*: uint16    ## ```
-                             ##   array up to MAX_DIRECTORIES
-                             ##      Sections
-                             ## ```
+    directories*: ptr ptr IMAGE_DATA_DIRECTORY  ##   array up to MAX_DIRECTORIES  ##      Sections
+
+    num_sections*: uint16  ##   array up to MAX_DIRECTORIES  ##      Sections
+
     sections_ptr*: pointer
-    sections*: ptr ptr IMAGE_SECTION_HEADER ## ```
-                                            ##   array up to MAX_SECTIONS
-                                            ## ```
-    entrypoint*: uint64      ## ```
-                             ##   array up to MAX_SECTIONS
-                             ## ```
+    sections*: ptr ptr IMAGE_SECTION_HEADER  ##   array up to MAX_SECTIONS
+
+    entrypoint*: uint64  ##   array up to MAX_SECTIONS
+
     imagebase*: uint64
 
   pe_cached_data_t* {.bycopy, importc, imppeHdr.} = object
-    imports*: ptr pe_imports_t ## ```
-                               ##   Parsed directories
-                               ## ```
-    exports*: ptr pe_exports_t ## ```
-                               ##   Hashes
-                               ## ```
-    hash_headers*: ptr pe_hash_headers_t ## ```
-                                         ##   Hashes
-                                         ## ```
+    imports*: ptr pe_imports_t  ##   Parsed directories
+
+    exports*: ptr pe_exports_t  ##   Hashes
+
+    hash_headers*: ptr pe_hash_headers_t  ##   Hashes
+
     hash_sections*: ptr pe_hash_sections_t
-    hash_file*: ptr pe_hash_t ## ```
-                              ##   Resources
-                              ## ```
-    resources*: ptr pe_resources_t ## ```
-                                   ##   Resources
-                                   ## ```
+    hash_file*: ptr pe_hash_t  ##   Resources
+
+    resources*: ptr pe_resources_t  ##   Resources
+
   
   pe_ctx* {.bycopy, imppeHdr, importc: "struct pe_ctx".} = object
     stream*: File
@@ -164,10 +104,8 @@ proc pe_rva2ofs*(ctx: ptr pe_ctx_t, rva: uint64): uint64 {.importc, cdecl,
     imppeHdr.}
 proc pe_ofs2rva*(ctx: ptr pe_ctx_t, ofs: uint64): uint64 {.importc, cdecl,
     imppeHdr.}
-proc pe_dos*(ctx: ptr pe_ctx_t): ptr IMAGE_DOS_HEADER {.importc, cdecl, imppeHdr.}
-                                        ## ```
-                                        ##   Header functions
-                                        ## ```
+proc pe_dos*(ctx: ptr pe_ctx_t): ptr IMAGE_DOS_HEADER {.importc, cdecl, imppeHdr.}  ##   Header functions
+
 proc pe_coff*(ctx: ptr pe_ctx_t): ptr IMAGE_COFF_HEADER {.importc, cdecl,
     imppeHdr.}
 proc pe_optional*(ctx: ptr pe_ctx_t): ptr IMAGE_OPTIONAL_HEADER {.importc,
@@ -197,10 +135,8 @@ proc pe_directory_name*(entry: ImageDirectoryEntry): cstring {.importc, cdecl,
     imppeHdr.}
 proc pe_section_characteristic_name*(characteristic: SectionCharacteristics): cstring {.
     importc, cdecl, imppeHdr.}
-proc pe_hash_recommended_size*(): uint {.importc, cdecl, imppeHdr.}
-                                        ## ```
-                                        ##   Hash functions
-                                        ## ```
+proc pe_hash_recommended_size*(): uint {.importc, cdecl, imppeHdr.}  ##   Hash functions
+
 proc pe_hash_raw_data*(output: cstring, output_size: uint, alg_name: cstring,
                        data: ptr uint8, data_size: uint): bool {.importc,
     cdecl, imppeHdr.}
@@ -212,24 +148,16 @@ proc pe_get_file_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_t {.importc, cdecl,
     imppeHdr.}
 proc pe_imphash*(ctx: ptr pe_ctx_t, flavor: pe_imphash_flavor_e): cstring {.
     importc, cdecl, imppeHdr.}
-proc pe_imports*(ctx: ptr pe_ctx_t): ptr pe_imports_t {.importc, cdecl, imppeHdr.}
-                                        ## ```
-                                        ##   Imports functions
-                                        ## ```
-proc pe_exports*(ctx: ptr pe_ctx_t): ptr pe_exports_t {.importc, cdecl, imppeHdr.}
-                                        ## ```
-                                        ##   Exports functions
-                                        ## ```
+proc pe_imports*(ctx: ptr pe_ctx_t): ptr pe_imports_t {.importc, cdecl, imppeHdr.}  ##   Imports functions
+
+proc pe_exports*(ctx: ptr pe_ctx_t): ptr pe_exports_t {.importc, cdecl, imppeHdr.}  ##   Exports functions
+
 proc pe_resources*(ctx: ptr pe_ctx_t): ptr pe_resources_t {.importc, cdecl,
-    imppeHdr.}
-                                        ## ```
-                                        ##   Resources functions
-                                        ## ```
+    imppeHdr.}  ##   Resources functions
+
 proc pe_calculate_entropy_file*(ctx: ptr pe_ctx_t): cdouble {.importc, cdecl,
-    imppeHdr.}
-                                        ## ```
-                                        ##   Misc functions
-                                        ## ```
+    imppeHdr.}  ##   Misc functions
+
 proc pe_fpu_trick*(ctx: ptr pe_ctx_t): bool {.importc, cdecl, imppeHdr.}
 proc pe_get_cpl_analysis*(ctx: ptr pe_ctx_t): cint {.importc, cdecl, imppeHdr.}
 proc pe_has_fake_entrypoint*(ctx: ptr pe_ctx_t): cint {.importc, cdecl, imppeHdr.}

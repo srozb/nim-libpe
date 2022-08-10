@@ -1,55 +1,14 @@
 import dir_resources
 import error
+import def_enums
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-import macros
-
-macro defineEnum(typ: untyped): untyped =
-  result = newNimNode(nnkStmtList)
-
-  # Enum mapped to distinct cint
-  result.add quote do:
-    type `typ`* = distinct cint
-
-  for i in ["+", "-", "*", "div", "mod", "shl", "shr", "or", "and", "xor", "<", "<=", "==", ">", ">="]:
-    let
-      ni = newIdentNode(i)
-      typout = if i[0] in "<=>": newIdentNode("bool") else: typ # comparisons return bool
-    if i[0] == '>': # cannot borrow `>` and `>=` from templates
-      let
-        nopp = if i.len == 2: newIdentNode("<=") else: newIdentNode("<")
-      result.add quote do:
-        proc `ni`*(x: `typ`, y: cint): `typout` = `nopp`(y, x)
-        proc `ni`*(x: cint, y: `typ`): `typout` = `nopp`(y, x)
-        proc `ni`*(x, y: `typ`): `typout` = `nopp`(y, x)
-    else:
-      result.add quote do:
-        proc `ni`*(x: `typ`, y: cint): `typout` {.borrow.}
-        proc `ni`*(x: cint, y: `typ`): `typout` {.borrow.}
-        proc `ni`*(x, y: `typ`): `typout` {.borrow.}
-    result.add quote do:
-      proc `ni`*(x: `typ`, y: int): `typout` = `ni`(x, y.cint)
-      proc `ni`*(x: int, y: `typ`): `typout` = `ni`(x.cint, y)
-
-  let
-    divop = newIdentNode("/")   # `/`()
-    dlrop = newIdentNode("$")   # `$`()
-    notop = newIdentNode("not") # `not`()
-  result.add quote do:
-    proc `divop`*(x, y: `typ`): `typ` = `typ`((x.float / y.float).cint)
-    proc `divop`*(x: `typ`, y: cint): `typ` = `divop`(x, `typ`(y))
-    proc `divop`*(x: cint, y: `typ`): `typ` = `divop`(`typ`(x), y)
-    proc `divop`*(x: `typ`, y: int): `typ` = `divop`(x, y.cint)
-    proc `divop`*(x: int, y: `typ`): `typ` = `divop`(x.cint, y)
-
-    proc `dlrop`*(x: `typ`): string {.borrow.}
-    proc `notop`*(x: `typ`): `typ` {.borrow.}
-
-
 {.pragma: impresourcesHdr, header: "libpe/libpe/include/libpe/resources.h".}
 {.experimental: "codeReordering".}
+
 defineEnum(pe_resource_level_e)
 defineEnum(pe_resource_node_type_e)
+
 const
   LIBPE_RDT_LEVEL1* = (1).pe_resource_level_e
   LIBPE_RDT_LEVEL2* = (2).pe_resource_level_e
@@ -58,57 +17,36 @@ const
   LIBPE_RDT_DIRECTORY_ENTRY* = (2).pe_resource_node_type_e
   LIBPE_RDT_DATA_STRING* = (3).pe_resource_node_type_e
   LIBPE_RDT_DATA_ENTRY* = (4).pe_resource_node_type_e
+
 type
   pe_ctx* {.incompleteStruct, impresourcesHdr, importc: "struct pe_ctx".} = object
+  
   pe_ctx_t* {.importc, impresourcesHdr.} = pe_ctx
   Union_resourcesh1* {.union, bycopy, impresourcesHdr,
                        importc: "union Union_resourcesh1".} = object
-    raw_ptr*: pointer ## ```
-                      ##   We are allowed to rely on type-punning in C99, but not in C++.
-                      ## ```
-    resourceDirectory*: ptr IMAGE_RESOURCE_DIRECTORY ## ```
-                                                     ##   type == LIBPE_RDT_RESOURCE_DIRECTORY
-                                                     ## ```
-    directoryEntry*: ptr IMAGE_RESOURCE_DIRECTORY_ENTRY ## ```
-                                                        ##   type == LIBPE_RDT_DIRECTORY_ENTRY
-                                                        ## ```
-    dataString*: ptr IMAGE_RESOURCE_DATA_STRING_U ## ```
-                                                  ##   type == LIBPE_RDT_DATA_STRING
-                                                  ## ```
-    dataEntry*: ptr IMAGE_RESOURCE_DATA_ENTRY ## ```
-                                              ##   type == LIBPE_RDT_DATA_ENTRY
-                                              ## ```
+    raw_ptr*: pointer  ##   We are allowed to rely on type-punning in C99, but not in C++.
+    resourceDirectory*: ptr IMAGE_RESOURCE_DIRECTORY  ##   type == LIBPE_RDT_RESOURCE_DIRECTORY
+    directoryEntry*: ptr IMAGE_RESOURCE_DIRECTORY_ENTRY  ##   type == LIBPE_RDT_DIRECTORY_ENTRY
+    dataString*: ptr IMAGE_RESOURCE_DATA_STRING_U  ##   type == LIBPE_RDT_DATA_STRING
+    dataEntry*: ptr IMAGE_RESOURCE_DATA_ENTRY  ##   type == LIBPE_RDT_DATA_ENTRY
   
   pe_resource_node* {.bycopy, impresourcesHdr,
                       importc: "struct pe_resource_node".} = object
     depth*: uint16
-    dirLevel*: uint32        ## ```
-                             ##   pe_resouces_level_e
-                             ## ```
-    `type`*: pe_resource_node_type_e ## ```
-                                     ##   pe_resouces_level_e
-                                     ## ```
+    dirLevel*: uint32  ##   pe_resouces_level_e
+    `type`*: pe_resource_node_type_e  ##   pe_resouces_level_e
     name*: cstring
     raw*: Union_resourcesh1
-    parentNode*: ptr pe_resource_node ## ```
-                                      ##   Points to the parent node, if any.
-                                      ## ```
-    childNode*: ptr pe_resource_node ## ```
-                                     ##   Points to the 1st child node, if any.
-                                     ## ```
-    nextNode*: ptr pe_resource_node ## ```
-                                    ##   Points to the next sibling node, if any.
-                                    ## ```
+    parentNode*: ptr pe_resource_node  ##   Points to the parent node, if any.
+    childNode*: ptr pe_resource_node  ##   Points to the 1st child node, if any.
+    nextNode*: ptr pe_resource_node  ##   Points to the next sibling node, if any.
   
   pe_resource_node_t* {.importc, impresourcesHdr.} = pe_resource_node
+
   pe_resources_t* {.bycopy, importc, impresourcesHdr.} = object
     err*: pe_err_e
-    resource_base_ptr*: pointer ## ```
-                                ##   A pointer to the beggining of the IMAGE_RESOURCE_DIRECTORY.
-                                ## ```
-    root_node*: ptr pe_resource_node_t ## ```
-                                       ##   A pointer to the beggining of the IMAGE_RESOURCE_DIRECTORY.
-                                       ## ```
+    resource_base_ptr*: pointer  ##   A pointer to the beggining of the IMAGE_RESOURCE_DIRECTORY.
+    root_node*: ptr pe_resource_node_t  ##   A pointer to the beggining of the IMAGE_RESOURCE_DIRECTORY.
   
   pe_resource_entry_info_t* {.bycopy, importc, impresourcesHdr.} = object
     name*: cstring
@@ -118,12 +56,14 @@ type
 
   pe_resource_node_predicate_fn* {.importc, impresourcesHdr.} = proc (
       node: ptr pe_resource_node_t): bool {.cdecl.}
+
   pe_resource_node_search_result_item* {.bycopy, impresourcesHdr,
       importc: "struct pe_resource_node_search_result_item".} = object
     node*: ptr pe_resource_node_t
     next*: ptr pe_resource_node_search_result_item
 
   pe_resource_node_search_result_item_t* {.importc, impresourcesHdr.} = pe_resource_node_search_result_item
+
   pe_resource_node_search_result_t* {.bycopy, importc, impresourcesHdr.} = object
     count*: uint
     items*: ptr pe_resource_node_search_result_item_t

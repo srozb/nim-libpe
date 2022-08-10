@@ -1,9 +1,8 @@
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-
-
 {.pragma: imphdr_dosHdr,
   header: "libpe/libpe/include/libpe/hdr_dos.h".}
 {.experimental: "codeReordering".}
+
 type
   IMAGE_DOS_HEADER* {.bycopy, importc, imphdr_dosHdr.} = object
     e_magic*: uint16
@@ -24,8 +23,6 @@ type
     e_oemid*: uint16
     e_oeminfo*: uint16
     e_res2*: array[10, uint16]
-    e_lfanew*: uint32        ## ```
-                             ##   sizeof(IMAGE_DOS_HEADER) + size of MS-DOS stub
-                             ## ```
+    e_lfanew*: uint32  ## sizeof(IMAGE_DOS_HEADER) + size of MS-DOS stub
   
 {.pop.}
