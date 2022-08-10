@@ -1,0 +1,3 @@
+[submodule "src/libpe/libpe"]
+	path = src/libpe/libpe
+	url = https://github.com/srozb/libpe.git
