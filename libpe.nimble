@@ -5,8 +5,6 @@ author        = "srozb"
 description   = "libpe Parser bindings"
 license       = "MIT"
 srcDir        = "src"
-bin           = @["peni"]
-
 
 # Dependencies
 

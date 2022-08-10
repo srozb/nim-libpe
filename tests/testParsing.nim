@@ -5,6 +5,7 @@ import libpe/error
 
 import libpe/imports
 import libpe/exports
+import libpe/hashes
 
 suite "Testing PE32+ exe":
   var ctx: pe_ctx_t
@@ -42,6 +43,13 @@ suite "Testing PE32+ exe":
 
   test "PE Entropy":
     check pe_calculate_entropy_file(addr ctx) == 5.969794543169005
+
+  test "PE Imphash":
+    check $pe_imphash(addr ctx, LIBPE_IMPHASH_FLAVOR_PEFILE) == "4db27267734d1576d75c991dc70f68ac"
+    
+  test "PE Hashing":
+    let sectHashes = pe_get_sections_hash(addr ctx)
+    check $sectHashes.sections[0].ssdeep == "768:0s5+Tb76ffBDDwBL/qRzgNReI3fu6MpJ9lw2c9zxZqz3YM:Z8qpnO/qRUNReI3fu6Uw2mTA" # BUG
 
 suite "Testing PE32 dll":
   var ctx: pe_ctx_t
@@ -93,3 +101,14 @@ suite "Testing PE32 dll":
 
   test "TLS Callback":
     check pe_get_tls_callback(addr ctx) == -2  # TODO: improve test case
+
+  test "PE Hashing":
+    check $pe_imphash(addr ctx, LIBPE_IMPHASH_FLAVOR_PEFILE) == "424359274c5f83c7008c38ebd2508fee"
+
+    let headerHashes = pe_get_headers_hashes(addr ctx)
+    check $headerHashes.dos.md5 == "a83927f73eea9f5610e0bab5d44f05c5"
+    check $headerHashes.coff.md5 == "c03ffb62fdd614762dfde4b31bfe2ff9"
+    check $headerHashes.optional.md5 == "f42701098bb164092d48f12dfe127290"
+
+    let sectHashes = pe_get_sections_hash(addr ctx)
+    check $sectHashes.sections[0].ssdeep == "6144:8LFThsrlPqhXPXpwiKQQg9L8YMcoIyHJPNlK9//ualAcQYLUIaGdY7Y1XiRdQMJ:mFThsrlPqhXPXpwiHQg9L8xcoIyHJfK"  # BUG

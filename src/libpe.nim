@@ -30,50 +30,33 @@ const
   SIGNATURE_NE* = 0x0000454E
   SIGNATURE_PE* = 0x00004550
   LIBPE_OPT_NOCLOSE_FD* = ((1 shl typeof(1)(0))).pe_option_e  ##   Keeps stream open for further usage.
-
   LIBPE_OPT_OPEN_RW* = ((1 shl typeof(1)(1))).pe_option_e  ##   Open file for read and writing
-
 
 type
   pe_options_e* {.importc, imppeHdr.} = uint16  ##   bitmasked pe_option_e values
 
   pe_file_t* {.bycopy, importc, imppeHdr.} = object
     dos_hdr*: ptr IMAGE_DOS_HEADER  ##   DOS header
-
     signature*: uint32  ##   Signature
-
     coff_hdr*: ptr IMAGE_COFF_HEADER  ##   COFF header
-
     optional_hdr_ptr*: pointer  ##   Optional header
-
     optional_hdr*: IMAGE_OPTIONAL_HEADER  ##   Directories
-
     num_directories*: uint32  ##   Directories
-
     directories_ptr*: pointer
     directories*: ptr ptr IMAGE_DATA_DIRECTORY  ##   array up to MAX_DIRECTORIES  ##      Sections
-
     num_sections*: uint16  ##   array up to MAX_DIRECTORIES  ##      Sections
-
     sections_ptr*: pointer
     sections*: ptr ptr IMAGE_SECTION_HEADER  ##   array up to MAX_SECTIONS
-
     entrypoint*: uint64  ##   array up to MAX_SECTIONS
-
     imagebase*: uint64
 
   pe_cached_data_t* {.bycopy, importc, imppeHdr.} = object
     imports*: ptr pe_imports_t  ##   Parsed directories
-
     exports*: ptr pe_exports_t  ##   Hashes
-
     hash_headers*: ptr pe_hash_headers_t  ##   Hashes
-
     hash_sections*: ptr pe_hash_sections_t
     hash_file*: ptr pe_hash_t  ##   Resources
-
     resources*: ptr pe_resources_t  ##   Resources
-
   
   pe_ctx* {.bycopy, imppeHdr, importc: "struct pe_ctx".} = object
     stream*: File

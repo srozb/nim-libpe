@@ -29,7 +29,7 @@ type
   pe_hash_sections_t* {.bycopy, importc, imphashesHdr.} = object
     err*: pe_err_e
     count*: uint32
-    sections*: ptr ptr pe_hash_t
+    sections*: ptr ptr UncheckedArray[pe_hash_t]  # BUG: Can't read all sections
 
 proc pe_hash_headers_dealloc*(obj: ptr pe_hash_headers_t) {.importc, cdecl,
     imphashesHdr.}
