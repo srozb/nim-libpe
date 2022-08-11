@@ -119,7 +119,6 @@ proc pe_directory_name*(entry: ImageDirectoryEntry): cstring {.importc, cdecl,
 proc pe_section_characteristic_name*(characteristic: SectionCharacteristics): cstring {.
     importc, cdecl, imppeHdr.}
 proc pe_hash_recommended_size*(): uint {.importc, cdecl, imppeHdr.}  ##   Hash functions
-
 proc pe_hash_raw_data*(output: cstring, output_size: uint, alg_name: cstring,
                        data: ptr uint8, data_size: uint): bool {.importc,
     cdecl, imppeHdr.}

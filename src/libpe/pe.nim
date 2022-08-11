@@ -27,8 +27,8 @@ const
   IMAGE_ORDINAL_FLAG64* = 0x8000000000000000'u64
   SIGNATURE_NE* = 0x0000454E
   SIGNATURE_PE* = 0x00004550
-  LIBPE_OPT_NOCLOSE_FD* = ((1 shl typeof(1)(0))).pe_option_e  # Keeps stream open for further usage.
-  LIBPE_OPT_OPEN_RW* = ((1 shl typeof(1)(1))).pe_option_e  # Open file for read and writing
+  LIBPE_OPT_NOCLOSE_FD* = 1.pe_option_e  # Keeps stream open for further usage.
+  LIBPE_OPT_OPEN_RW* = 2.pe_option_e  # Open file for read and writing
 
 type
   pe_options_e* {.importc, imppeHdr.} = uint16  # bitmasked pe_option_e values
