@@ -1,2 +1,2 @@
 switch("path", "../src")
-switch("cincludes", "libpe/libpe/include/libpe")
+switch("cincludes", "../src/libpe/libpe/include/libpe")
