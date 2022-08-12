@@ -22,3 +22,6 @@ assert pe_is_pe(addr ctx)
 echo $ctx.pe.entrypoint
 ```
 
+## Build 
+
+nim c --passL:"-lpe"
