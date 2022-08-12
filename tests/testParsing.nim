@@ -48,7 +48,28 @@ suite "Testing PE32+ exe":
     check $pe_imphash(addr ctx, LIBPE_IMPHASH_FLAVOR_PEFILE) == "4db27267734d1576d75c991dc70f68ac"
     
   test "PE Hashing":
+    let hSize = pe_hash_recommended_size()
     let sectHashes = pe_get_sections_hash(addr ctx)
+
+    var output = newString(hSize)  # Looks risky
+    ## MD5
+    output.setLen(32)
+    discard pe_hash_raw_data(output.cstring, hSize, "md5".cstring, 
+      cast[ptr uint8](ctx.map_addr), ctx.map_size.uint)
+    check output == "ef3179d498793bf4234f708d3be28633"
+
+    ## SHA1
+    output.setLen(40)
+    discard pe_hash_raw_data(output.cstring, hSize, "sha1".cstring, 
+      cast[ptr uint8](ctx.map_addr), ctx.map_size.uint)
+    check output == "dd399ae46303343f9f0da189aee11c67bd868222"
+
+    ## SHA256
+    output.setLen(64)
+    discard pe_hash_raw_data(output.cstring, hSize, "sha256".cstring, 
+      cast[ptr uint8](ctx.map_addr), ctx.map_size.uint)
+    check output == "b53f3c0cd32d7f20849850768da6431e5f876b7bfa61db0aa0700b02873393fa"
+
     check $sectHashes.sections[0].ssdeep == "768:0s5+Tb76ffBDDwBL/qRzgNReI3fu6MpJ9lw2c9zxZqz3YM:Z8qpnO/qRUNReI3fu6Uw2mTA" # BUG
 
 suite "Testing PE32 dll":
