@@ -1,7 +1,7 @@
 import def_enums
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-{.pragma: impdir_resourcesHdr, header: "libpe/libpe/include/libpe/dir_resources.h".}
+{.pragma: impdir_resourcesHdr, header: "dir_resources.h".}
 {.experimental: "codeReordering".}
 
 defineEnum(ResourceType)

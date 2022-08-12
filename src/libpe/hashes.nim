@@ -3,7 +3,7 @@ import def_enums
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: imphashesHdr,
-  header: "libpe/libpe/include/libpe/hashes.h".}
+  header: "hashes.h".}
 {.experimental: "codeReordering".}
 
 defineEnum(pe_imphash_flavor_e)

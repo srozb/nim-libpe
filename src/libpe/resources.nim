@@ -3,7 +3,7 @@ import error
 import def_enums
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-{.pragma: impresourcesHdr, header: "libpe/libpe/include/libpe/resources.h".}
+{.pragma: impresourcesHdr, header: "resources.h".}
 {.experimental: "codeReordering".}
 
 defineEnum(pe_resource_level_e)

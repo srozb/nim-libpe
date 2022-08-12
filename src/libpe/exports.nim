@@ -3,7 +3,7 @@ import strutils
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: impexportsHdr,
-  header: "libpe/libpe/include/libpe/exports.h".}
+  header: "exports.h".}
 {.experimental: "codeReordering".}
 
 type

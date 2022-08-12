@@ -1,6 +1,6 @@
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: imphdr_dosHdr,
-  header: "libpe/libpe/include/libpe/hdr_dos.h".}
+  header: "hdr_dos.h".}
 {.experimental: "codeReordering".}
 
 type

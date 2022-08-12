@@ -1,7 +1,7 @@
 import def_enums
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-{.pragma: imphdr_optionalHdr, header: "libpe/libpe/include/libpe/hdr_optional.h".}
+{.pragma: imphdr_optionalHdr, header: "hdr_optional.h".}
 {.experimental: "codeReordering".}
 
 defineEnum(WindowsSubsystem) ## REFERENCE: http:msdn.microsoft.com/en-us/library/windows/desktop/ms680339(v=vs.85).aspx

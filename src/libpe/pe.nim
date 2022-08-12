@@ -12,7 +12,7 @@ import def_enums
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: imppeHdr,
-  header: "libpe/libpe/include/libpe/pe.h".}
+  header: "pe.h".}
 {.experimental: "codeReordering".}
 
 defineEnum(pe_option_e)

@@ -1,7 +1,7 @@
 import def_enums
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-{.pragma: imphdr_coffHdr, header: "libpe/libpe/include/libpe/hdr_coff.h".}
+{.pragma: imphdr_coffHdr, header: "hdr_coff.h".}
 {.experimental: "codeReordering".}
 
 defineEnum(MachineType)

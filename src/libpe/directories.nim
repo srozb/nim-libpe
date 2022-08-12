@@ -1,7 +1,7 @@
 import def_enums
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-{.pragma: impdirectoriesHdr, header: "libpe/libpe/include/libpe/directories.h".}
+{.pragma: impdirectoriesHdr, header: "directories.h".}
 {.experimental: "codeReordering".}
 
 defineEnum(ImageDirectoryEntry)  ##   Directory entries

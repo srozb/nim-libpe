@@ -4,7 +4,7 @@ import error
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: impimportsHdr,
-  header: "libpe/libpe/include/libpe/imports.h".}
+  header: "imports.h".}
 {.experimental: "codeReordering".}
 
 type

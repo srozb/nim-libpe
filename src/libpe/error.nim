@@ -2,7 +2,7 @@ import def_enums
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: imperrorHdr,
-  header: "libpe/libpe/include/libpe/error.h".}
+  header: "error.h".}
 {.experimental: "codeReordering".}
 defineEnum(pe_err_e) 
 

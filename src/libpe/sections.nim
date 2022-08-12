@@ -1,7 +1,7 @@
 import def_enums
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-{.pragma: impsectionsHdr, header: "libpe/libpe/include/libpe/sections.h".}
+{.pragma: impsectionsHdr, header: "sections.h".}
 {.experimental: "codeReordering".}
 
 defineEnum(SectionCharacteristics)
