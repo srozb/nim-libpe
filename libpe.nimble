@@ -2,7 +2,7 @@
 
 version       = "0.1.0"
 author        = "srozb"
-description   = "libpe Parser bindings"
+description   = "Nim wrapper for libpe library"
 license       = "MIT"
 srcDir        = "src"
 
