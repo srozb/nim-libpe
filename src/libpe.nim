@@ -29,8 +29,8 @@ const
   IMAGE_ORDINAL_FLAG64* = 0x8000000000000000'u64
   SIGNATURE_NE* = 0x0000454E
   SIGNATURE_PE* = 0x00004550
-  LIBPE_OPT_NOCLOSE_FD* = ((1 shl typeof(1)(0))).pe_option_e  ##   Keeps stream open for further usage.
-  LIBPE_OPT_OPEN_RW* = ((1 shl typeof(1)(1))).pe_option_e  ##   Open file for read and writing
+  LIBPE_OPT_NOCLOSE_FD* = 1.pe_option_e  # Keeps stream open for further usage.
+  LIBPE_OPT_OPEN_RW* = 2.pe_option_e  # Open file for read and writing
 
 type
   pe_options_e* {.importc, imppeHdr.} = uint16  ##   bitmasked pe_option_e values
@@ -99,8 +99,10 @@ proc pe_directories*(ctx: ptr pe_ctx_t): ptr ptr IMAGE_DATA_DIRECTORY {.importc,
 proc pe_directory_by_entry*(ctx: ptr pe_ctx_t, entry: ImageDirectoryEntry): ptr IMAGE_DATA_DIRECTORY {.
     importc, cdecl, imppeHdr.}
 proc pe_sections_count*(ctx: ptr pe_ctx_t): uint16 {.importc, cdecl, imppeHdr.}
-proc pe_sections*(ctx: ptr pe_ctx_t): ptr ptr IMAGE_SECTION_HEADER {.importc,
+proc pe_sections*(ctx: ptr pe_ctx_t): ptr UncheckedArray[ptr IMAGE_SECTION_HEADER] {.importc,
     cdecl, imppeHdr.}
+# proc pe_sections*(ctx: ptr pe_ctx_t): ptr ptr IMAGE_SECTION_HEADER {.importc,
+#     cdecl, imppeHdr.}
 proc pe_section_by_name*(ctx: ptr pe_ctx_t, section_name: cstring): ptr IMAGE_SECTION_HEADER {.
     importc, cdecl, imppeHdr.}
 proc pe_section_name*(ctx: ptr pe_ctx_t, section_hdr: ptr IMAGE_SECTION_HEADER,
@@ -145,3 +147,8 @@ proc pe_get_cpl_analysis*(ctx: ptr pe_ctx_t): cint {.importc, cdecl, imppeHdr.}
 proc pe_has_fake_entrypoint*(ctx: ptr pe_ctx_t): cint {.importc, cdecl, imppeHdr.}
 proc pe_get_tls_callback*(ctx: ptr pe_ctx_t): cint {.importc, cdecl, imppeHdr.}
 {.pop.}
+
+iterator sections*(ctx: var pe_ctx_t): ptr IMAGE_SECTION_HEADER =
+  var peSections = pe_sections(addr ctx)
+  for i in 0..<pe_sections_count(addr ctx).Natural: 
+    yield peSections[i]

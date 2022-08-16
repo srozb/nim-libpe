@@ -51,7 +51,7 @@ type
     VirtualSize*: uint32  ##   same value as next field
   
   IMAGE_SECTION_HEADER* {.bycopy, importc, impsectionsHdr.} = object  ##   Quoting pecoff_v8.docx: "Entries in the section table are numbered starting from one (1)".
-    Name*: array[8, uint8]
+    Name*: cstring
     Misc*: Union_sectionsh1
     VirtualAddress*: uint32
     SizeOfRawData*: uint32

@@ -6,6 +6,9 @@ import libpe/error
 import libpe/imports
 import libpe/exports
 import libpe/hashes
+import libpe/hdr_dos
+import libpe/hdr_coff
+import libpe/sections
 
 suite "Testing PE32+ exe":
   var ctx: pe_ctx_t
@@ -28,11 +31,33 @@ suite "Testing PE32+ exe":
     check pe_is_pe(addr ctx)
     check pe_is_dll(addr ctx) == false
 
+  test "PE Headers":
+    var dosHeader = pe_dos(addr ctx)
+    check dosHeader.e_magic == 0x5a4d
+    check dosHeader.e_lfanew == 0xf8
+
+    var coffHeader = pe_coff(addr ctx)
+    check coffHeader.Machine == IMAGE_FILE_MACHINE_AMD64.uint16
+    check coffHeader.NumberOfSections == 7
+    check coffHeader.TimeDateStamp.Natural == 4215970411
+
+    var optHeader = pe_optional(addr ctx)
+    check optHeader.h_64.AddressOfEntryPoint == 0x6890
+
   test "PE Directories":
     check pe_directories_count(addr ctx) == 16
 
   test "PE Sections":
     check pe_sections_count(addr ctx) == 7
+    var sec = pe_section_by_name(addr ctx, ".text".cstring)
+    check $sec.Name == ".text"
+    check sec.VirtualAddress == 4096
+    check sec.SizeOfRawData == 27136
+    check sec.PointerToRawData == 1024
+
+  test "PE Sections iterator":
+    for sec in ctx.sections:
+      check sec == pe_section_by_name(addr ctx, sec.Name)
 
   test "PE Exports":
     let exports = pe_exports(addr ctx)
