@@ -9,6 +9,7 @@ import libpe/hashes
 import libpe/hdr_dos
 import libpe/hdr_coff
 import libpe/sections
+import libpe/directories
 
 suite "Testing PE32+ exe":
   var ctx: pe_ctx_t
@@ -45,7 +46,13 @@ suite "Testing PE32+ exe":
     check optHeader.h_64.AddressOfEntryPoint == 0x6890
 
   test "PE Directories":
-    check pe_directories_count(addr ctx) == 16
+    let peDirsCount = pe_directories_count(addr ctx)
+    check peDirsCount == 16
+    for dirType, dirVal in ctx.directories:
+      check dirType == 1
+      check dirVal.Size == 700
+      check $pe_directory_name(dirType) == "IMAGE_DIRECTORY_ENTRY_IMPORT"
+      break  # Check only first directory
 
   test "PE Sections":
     check pe_sections_count(addr ctx) == 7

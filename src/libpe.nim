@@ -94,15 +94,13 @@ proc pe_coff*(ctx: ptr pe_ctx_t): ptr IMAGE_COFF_HEADER {.importc, cdecl,
 proc pe_optional*(ctx: ptr pe_ctx_t): ptr IMAGE_OPTIONAL_HEADER {.importc,
     cdecl, imppeHdr.}
 proc pe_directories_count*(ctx: ptr pe_ctx_t): uint32 {.importc, cdecl, imppeHdr.}
-proc pe_directories*(ctx: ptr pe_ctx_t): ptr ptr IMAGE_DATA_DIRECTORY {.importc,
+proc pe_directories*(ctx: ptr pe_ctx_t): ptr UncheckedArray[ptr IMAGE_DATA_DIRECTORY] {.importc,
     cdecl, imppeHdr.}
 proc pe_directory_by_entry*(ctx: ptr pe_ctx_t, entry: ImageDirectoryEntry): ptr IMAGE_DATA_DIRECTORY {.
     importc, cdecl, imppeHdr.}
 proc pe_sections_count*(ctx: ptr pe_ctx_t): uint16 {.importc, cdecl, imppeHdr.}
 proc pe_sections*(ctx: ptr pe_ctx_t): ptr UncheckedArray[ptr IMAGE_SECTION_HEADER] {.importc,
     cdecl, imppeHdr.}
-# proc pe_sections*(ctx: ptr pe_ctx_t): ptr ptr IMAGE_SECTION_HEADER {.importc,
-#     cdecl, imppeHdr.}
 proc pe_section_by_name*(ctx: ptr pe_ctx_t, section_name: cstring): ptr IMAGE_SECTION_HEADER {.
     importc, cdecl, imppeHdr.}
 proc pe_section_name*(ctx: ptr pe_ctx_t, section_hdr: ptr IMAGE_SECTION_HEADER,
@@ -149,6 +147,12 @@ proc pe_get_tls_callback*(ctx: ptr pe_ctx_t): cint {.importc, cdecl, imppeHdr.}
 {.pop.}
 
 iterator sections*(ctx: var pe_ctx_t): ptr IMAGE_SECTION_HEADER =
-  var peSections = pe_sections(addr ctx)
+  let peSections = pe_sections(addr ctx)
   for i in 0..<pe_sections_count(addr ctx).Natural: 
     yield peSections[i]
+
+iterator directories*(ctx: var pe_ctx_t): (ImageDirectoryEntry, ptr IMAGE_DATA_DIRECTORY) =
+  let peDirectories = pe_directories(addr ctx)
+  for i in 0..<pe_directories_count(addr ctx).Natural:
+    if peDirectories[i].Size == 0: continue
+    yield (i.ImageDirectoryEntry, peDirectories[i])

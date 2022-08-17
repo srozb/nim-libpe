@@ -13,7 +13,7 @@ const
   IMAGE_DIRECTORY_ENTRY_EXCEPTION* = (3).ImageDirectoryEntry  ##   Exception Table
   IMAGE_DIRECTORY_ENTRY_SECURITY* = (4).ImageDirectoryEntry  ##   Certificate Table
   IMAGE_DIRECTORY_ENTRY_BASERELOC* = (5).ImageDirectoryEntry  ##   Base Relocation Table
-  IMAGE_DIRECTORY_ENTRY_DEBUG* = (6).ImageDirectoryEntry  ##   Debug  ##     IMAGE_DIRECTORY_ENTRY_COPYRIGHT			= 7,  (X86 usage)
+  IMAGE_DIRECTORY_ENTRY_DEBUG* = (6).ImageDirectoryEntry  ##   Debug
   IMAGE_DIRECTORY_ENTRY_ARCHITECTURE* = (7).ImageDirectoryEntry  ##   Architecture
   IMAGE_DIRECTORY_ENTRY_GLOBALPTR* = (8).ImageDirectoryEntry  ##   Global Ptr
   IMAGE_DIRECTORY_ENTRY_TLS* = (9).ImageDirectoryEntry  ##   TLS Table
