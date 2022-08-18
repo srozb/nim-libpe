@@ -1,6 +1,5 @@
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-{.pragma: imphdr_dosHdr,
-  header: "hdr_dos.h".}
+{.pragma: imphdr_dosHdr, header: "hdr_dos.h".}
 {.experimental: "codeReordering".}
 
 type

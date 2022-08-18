@@ -4,18 +4,15 @@ import libpe/hdr_coff
 import libpe/hdr_optional
 import libpe/directories
 import libpe/sections
-# import libpe/pe
 import libpe/imports
 import libpe/exports
 import libpe/error
 import libpe/hashes
 import libpe/resources
 
-
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
 
-{.pragma: imppeHdr,
-  header: "pe.h".}
+{.pragma: imppeHdr, header: "pe.h".}
 {.experimental: "codeReordering".}
 
 defineEnum(pe_option_e)

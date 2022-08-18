@@ -3,8 +3,7 @@ import strutils
 import error
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-{.pragma: impimportsHdr,
-  header: "imports.h".}
+{.pragma: impimportsHdr, header: "imports.h".}
 {.experimental: "codeReordering".}
 
 type
