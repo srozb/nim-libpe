@@ -1,9 +1,8 @@
 import def_enums
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-{.pragma: imperrorHdr,
-  header: "error.h".}
-{.experimental: "codeReordering".}
+{.pragma: imperrorHdr, header: "error.h".}
+
 defineEnum(pe_err_e) 
 
 const
@@ -32,7 +31,4 @@ const
   LIBPE_E_NO_CALLBACKS_FOUND* = (LIBPE_E_HASHING_FAILED + 1).pe_err_e 
   LIBPE_E_NO_FUNCTIONS_FOUND* = (LIBPE_E_NO_CALLBACKS_FOUND + 1).pe_err_e 
 
-proc pe_error_msg*(error: pe_err_e): cstring {.importc, cdecl, imperrorHdr.}
-proc pe_error_print*(stream: File; error: pe_err_e) {.importc, cdecl,
-    imperrorHdr.}
 {.pop.}

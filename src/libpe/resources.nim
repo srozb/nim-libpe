@@ -2,9 +2,7 @@ import dir_resources
 import error
 import def_enums
 
-{.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: impresourcesHdr, header: "resources.h".}
-{.experimental: "codeReordering".}
 
 defineEnum(pe_resource_level_e)
 defineEnum(pe_resource_node_type_e)
@@ -68,28 +66,5 @@ type
     count*: uint
     items*: ptr pe_resource_node_search_result_item_t
 
-proc pe_resource_entry_info_lookup*(name_offset: uint32): ptr pe_resource_entry_info_t {.
-    importc, cdecl, impresourcesHdr.}
-proc pe_resource_search_nodes*(result: ptr pe_resource_node_search_result_t;
-                               node: ptr pe_resource_node_t;
-                               predicate: pe_resource_node_predicate_fn) {.
-    importc, cdecl, impresourcesHdr.}
-proc pe_resources_dealloc_node_search_result*(
-    result: ptr pe_resource_node_search_result_t) {.importc, cdecl,
-    impresourcesHdr.}
-proc pe_resource_root_node*(node: ptr pe_resource_node_t): ptr pe_resource_node_t {.
-    importc, cdecl, impresourcesHdr.}
-proc pe_resource_last_child_node*(parent_node: ptr pe_resource_node_t): ptr pe_resource_node_t {.
-    importc, cdecl, impresourcesHdr.}
-proc pe_resource_find_node_by_type_and_level*(node: ptr pe_resource_node_t;
-    `type`: pe_resource_node_type_e; dirLevel: uint32): ptr pe_resource_node_t {.
-    importc, cdecl, impresourcesHdr.}
-proc pe_resource_find_parent_node_by_type_and_level*(
-    node: ptr pe_resource_node_t; `type`: pe_resource_node_type_e;
-    dirLevel: uint32): ptr pe_resource_node_t {.importc, cdecl, impresourcesHdr.}
-proc pe_resource_parse_string_u*(ctx: ptr pe_ctx_t; output: cstring;
-                                 output_size: uint; data_string_ptr: ptr IMAGE_RESOURCE_DATA_STRING_U): cstring {.
-    importc, cdecl, impresourcesHdr.}
-proc pe_resources_dealloc*(obj: ptr pe_resources_t) {.importc, cdecl,
-    impresourcesHdr.}
-{.pop.}
+# proc pe_resources_dealloc*(obj: ptr pe_resources_t) {.importc, cdecl,
+#     impresourcesHdr.}

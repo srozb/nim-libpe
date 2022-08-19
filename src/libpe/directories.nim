@@ -1,8 +1,6 @@
 import def_enums
 
-{.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: impdirectoriesHdr, header: "directories.h".}
-{.experimental: "codeReordering".}
 
 defineEnum(ImageDirectoryEntry)  ##   Directory entries
 
@@ -57,5 +55,3 @@ type
   IMAGE_DATA_DIRECTORY* {.bycopy, importc, impdirectoriesHdr.} = object
     VirtualAddress*: uint32
     Size*: uint32
-
-{.pop.}

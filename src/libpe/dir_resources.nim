@@ -1,8 +1,6 @@
 import def_enums
 
-{.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: impdir_resourcesHdr, header: "dir_resources.h".}
-{.experimental: "codeReordering".}
 
 defineEnum(ResourceType)
 
@@ -97,4 +95,3 @@ type
     dwFileDateMS*: uint32
     dwFileDateLS*: uint32
 
-{.pop.}

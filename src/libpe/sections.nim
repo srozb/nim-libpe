@@ -1,8 +1,6 @@
 import def_enums
 
-{.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: impsectionsHdr, header: "sections.h".}
-{.experimental: "codeReordering".}
 
 defineEnum(SectionCharacteristics)
 
@@ -61,5 +59,3 @@ type
     NumberOfRelocations*: uint16
     NumberOfLinenumbers*: uint16           
     Characteristics*: uint32 ##   SectionCharacteristics
-
-{.pop.}

@@ -1,10 +1,7 @@
 import error
 import def_enums
 
-{.push hint[ConvFromXtoItselfNotNeeded]: off.}
-{.pragma: imphashesHdr,
-  header: "hashes.h".}
-{.experimental: "codeReordering".}
+{.pragma: imphashesHdr, header: "hashes.h".}
 
 defineEnum(pe_imphash_flavor_e)
 
@@ -31,9 +28,8 @@ type
     count*: uint32
     sections*: ptr ptr UncheckedArray[pe_hash_t]  # BUG: Can't read all sections
 
-proc pe_hash_headers_dealloc*(obj: ptr pe_hash_headers_t) {.importc, cdecl,
-    imphashesHdr.}
-proc pe_hash_sections_dealloc*(obj: ptr pe_hash_sections_t) {.importc, cdecl,
-    imphashesHdr.}
-proc pe_hash_dealloc*(obj: ptr pe_hash_t) {.importc, cdecl, imphashesHdr.}
-{.pop.}
+# proc pe_hash_headers_dealloc*(obj: ptr pe_hash_headers_t) {.importc, cdecl,
+#     imphashesHdr.}
+# proc pe_hash_sections_dealloc*(obj: ptr pe_hash_sections_t) {.importc, cdecl,
+#     imphashesHdr.}
+# proc pe_hash_dealloc*(obj: ptr pe_hash_t) {.importc, cdecl, imphashesHdr.}

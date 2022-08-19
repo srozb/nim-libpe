@@ -2,9 +2,7 @@ import strutils
 
 import error
 
-{.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: impimportsHdr, header: "imports.h".}
-{.experimental: "codeReordering".}
 
 type
   pe_imported_function_t* {.bycopy, importc, impimportsHdr.} = object
@@ -23,9 +21,8 @@ type
     dll_count*: uint32
     dlls*: ptr UncheckedArray[pe_imported_dll_t]   ##   array of DLLs
   
-proc pe_imports_dealloc*(imports: ptr pe_imports_t) {.importc, cdecl,
-    impimportsHdr.}
-{.pop.}
+# proc pe_imports_dealloc*(imports: ptr pe_imports_t) {.importc, cdecl,
+#     impimportsHdr.}
 
 iterator items*(x: ptr pe_imports_t): pe_imported_dll_t =
   for i in 0..<x.dll_count: yield x.dlls[i]  # TODO: filter empty names

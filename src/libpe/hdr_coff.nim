@@ -1,8 +1,6 @@
 import def_enums
 
-{.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: imphdr_coffHdr, header: "hdr_coff.h".}
-{.experimental: "codeReordering".}
 
 defineEnum(MachineType)
 defineEnum(ImageCharacteristics)
@@ -56,5 +54,3 @@ type
     NumberOfSymbols*: uint32
     SizeOfOptionalHeader*: uint16
     Characteristics*: uint16  ##  ImageCharacteristics
-
-{.pop.}

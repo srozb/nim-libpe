@@ -1,8 +1,6 @@
 import def_enums
 
-{.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: imphdr_optionalHdr, header: "hdr_optional.h".}
-{.experimental: "codeReordering".}
 
 defineEnum(WindowsSubsystem) ## REFERENCE: http:msdn.microsoft.com/en-us/library/windows/desktop/ms680339(v=vs.85).aspx
 defineEnum(ImageDllCharacteristics)   ##   REFERENCE: http:msdn.microsoft.com/en-us/library/windows/desktop/ms680339(v=vs.85).aspx
@@ -119,5 +117,3 @@ type
     length*: uint  ##   opt_type_e
     h_32*: ptr IMAGE_OPTIONAL_HEADER_32
     h_64*: ptr IMAGE_OPTIONAL_HEADER_64
-
-{.pop.}

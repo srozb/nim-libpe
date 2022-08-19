@@ -1,7 +1,6 @@
 import error
 import strutils
 
-{.push hint[ConvFromXtoItselfNotNeeded]: off.}
 {.pragma: impexportsHdr, header: "exports.h".}
 {.experimental: "codeReordering".}
 
@@ -18,9 +17,8 @@ type
     functions_count*: uint32  ##   name of the DLL
     functions*: ptr UncheckedArray[pe_exported_function_t]   ##   array of exported functions
 
-proc pe_exports_dealloc*(exports: ptr pe_exports_t) {.importc, cdecl,
-    impexportsHdr.}
-{.pop.}
+# proc pe_exports_dealloc*(exports: ptr pe_exports_t) {.importc, cdecl,
+#     impexportsHdr.}
 
 iterator items*(x: ptr pe_exports_t): pe_exported_function_t =
   for i in 0..<x.functions_count: 
