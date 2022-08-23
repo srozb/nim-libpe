@@ -1,3 +1,5 @@
+import std/memFiles
+
 import libpe/def_enums
 import libpe/hdr_dos
 import libpe/hdr_coff
@@ -11,6 +13,8 @@ import libpe/hashes
 import libpe/resources
 import libpe/dir_resources
 
+var mFile: MemFile
+
 when defined(MacOsX):
   const libpePath = "/usr/local/opt/pev/lib/libpe.1.0.dylib"
 elif defined(mingw):
@@ -18,8 +22,6 @@ elif defined(mingw):
 elif defined(Windows):
   const libpePath = "libpe.dll"
   ## TODO: Linux
-
-{.push dynlib: libpePath.}
 
 {.pragma: imppeHdr, header: "pe.h".}
 {.pragma: impError, header: "error.h".}
@@ -76,13 +78,34 @@ type
 
   pe_ctx_t* {.importc, imppeHdr.} = pe_ctx
 
+
+proc pe_load_file_ext*(ctx: ptr pe_ctx_t, path: cstring, options: pe_options_e): pe_err_e =
+    result = LIBPE_E_OK
+    ctx.path = path
+    mFile = memfiles.open($path, mode=fmReadWriteExisting)  # try return LIBPE_E_OPEN_FAILED
+    # return LIBPE_E_NOT_A_FILE if not a file
+    ctx.map_size = mFile.size
+    ctx.map_addr = mFile.mem  # return LIBPE_E_MMAP_FAILED if error
+    ctx.map_end = cast[ptr uint](cast[int](ctx.map_addr) + mFile.size)
+
+    #TODO:? madvise(ctx->map_addr, ctx->map_size, MADV_SEQUENTIAL);
+    #TODO: OpenSSL_add_all_digests();
+
+proc pe_load_file*(ctx: ptr pe_ctx_t, path: cstring): pe_err_e =
+    return pe_load_file_ext(ctx, path, cast[pe_options_e](0))
+
+proc pe_unload*(ctx: ptr pe_ctx_t): pe_err_e =
+    if ctx.map_addr != mFile.mem:
+        return LIBPE_E_MUNMAP_FAILED
+    else:
+        mFile.close()
+    LIBPE_E_OK
+
+{.push dynlib: libpePath.}
+
 proc pe_can_read*(ctx: ptr pe_ctx_t, `ptr`: pointer, size: uint): bool {.
     importc, cdecl, imppeHdr.}
-proc pe_load_file*(ctx: ptr pe_ctx_t, path: cstring): pe_err_e {.importc, cdecl,
-    imppeHdr.}
-proc pe_load_file_ext*(ctx: ptr pe_ctx_t, path: cstring, options: pe_options_e): pe_err_e {.
-    importc, cdecl, imppeHdr.}
-proc pe_unload*(ctx: ptr pe_ctx_t): pe_err_e {.importc, cdecl, imppeHdr.}
+
 proc pe_parse*(ctx: ptr pe_ctx_t): pe_err_e {.importc, cdecl, imppeHdr.}
 proc pe_is_loaded*(ctx: ptr pe_ctx_t): bool {.importc, cdecl, imppeHdr.}
 proc pe_is_pe*(ctx: ptr pe_ctx_t): bool {.importc, cdecl, imppeHdr.}
