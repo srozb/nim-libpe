@@ -8,6 +8,7 @@ import libpe/exports
 import libpe/hashes
 import libpe/hdr_dos
 import libpe/hdr_coff
+import libpe/hdr_optional
 import libpe/sections
 import libpe/directories
 
@@ -21,9 +22,24 @@ suite "Testing PE32+ exe":
 
   test "PE Parse":
     check pe_parse(addr ctx) == LIBPE_E_OK
+    check pe_is_pe(addr ctx)
+
+  test "pe_can_read function":
+    check pe_can_read(addr ctx, cast[pointer](10), 10) == false
+    check pe_can_read(addr ctx, ctx.map_addr, 65535)
+    check pe_can_read(addr ctx, ctx.map_addr, 655350) == false
 
   test "Filesize":
     check pe_filesize(addr ctx) == 71680
+
+  test "Section by RVA":
+    check $pe_rva2section(addr ctx, 4096)[].Name == ".text"
+
+  test "RVA to Raw File Offset":
+    check pe_rva2ofs(addr ctx, 4096) == 1024
+
+  test "Raw File Offset to RVA":
+    check pe_ofs2rva(addr ctx, 1024) == 4096
 
   test "Header type PE32+ (x64)":
     check ctx.pe.optional_hdr.`type` == 0x20b
@@ -31,6 +47,24 @@ suite "Testing PE32+ exe":
   test "PE is not dll":
     check pe_is_pe(addr ctx)
     check pe_is_dll(addr ctx) == false
+
+  test "PE pe_machine_type_name type":
+    check $pe_machine_type_name(IMAGE_FILE_MACHINE_AMD64) == "IMAGE_FILE_MACHINE_AMD64"
+
+  test "pe_image_characteristic_name":
+    check $pe_image_characteristic_name(IMAGE_FILE_DEBUG_STRIPPED) == "IMAGE_FILE_DEBUG_STRIPPED"
+
+  test "pe_image_dllcharacteristic_name":
+    check $pe_image_dllcharacteristic_name(IMAGE_DLLCHARACTERISTICS_WDM_DRIVER) == "IMAGE_DLLCHARACTERISTICS_WDM_DRIVER"
+
+  test "pe_windows_subsystem_name":
+    check $pe_windows_subsystem_name(IMAGE_SUBSYSTEM_XBOX) == "IMAGE_SUBSYSTEM_XBOX"
+
+  test "pe_directory_name":
+    check $pe_directory_name(IMAGE_DIRECTORY_ENTRY_DEBUG) == "IMAGE_DIRECTORY_ENTRY_DEBUG"
+
+  test "pe_section_characteristic_name":
+    check $pe_section_characteristic_name(IMAGE_SCN_GPREL) == "IMAGE_SCN_GPREL"
 
   test "PE Headers":
     var dosHeader = pe_dos(addr ctx)

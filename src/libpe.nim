@@ -21,6 +21,8 @@ elif defined(Windows):
   const libpePath = "libpe.dll"
   ## TODO: Linux
 
+{.experimental: "codeReordering".}
+
 {.pragma: imppeHdr, header: "pe.h".}
 {.pragma: impError, header: "error.h".}
 {.pragma: impresourcesHdr, header: "resources.h".}
@@ -90,6 +92,12 @@ proc `+`(a: pointer, s: Natural): pointer = cast[pointer](cast[int](a) + s)
 converter ptrToPtrUint(a: pointer): ptr uint = cast[ptr uint](a)
 converter ptrToPtrUint32(a: pointer): ptr uint32 = cast[ptr uint32](a)
 
+proc pe_can_read*(ctx: ptr pe_ctx_t, `ptr`: pointer, size: uint): bool =
+  let 
+    pStart = cast[int](`ptr`)
+    pEnd = pStart + size.int
+  return pStart >= cast[int](ctx.map_addr) and pEnd <= cast[int](ctx.map_end)
+
 proc pe_load_file_ext*(ctx: ptr pe_ctx_t, path: cstring, options: pe_options_e): pe_err_e =
   result = LIBPE_E_OK
   ctx.path = path
@@ -112,6 +120,7 @@ proc pe_unload*(ctx: ptr pe_ctx_t): pe_err_e =
   LIBPE_E_OK
 
 proc pe_parse*(ctx: ptr pe_ctx_t): pe_err_e =
+  result = LIBPE_E_OK
   ctx.pe.dos_hdr = cast[ptr IMAGE_DOS_HEADER](ctx.map_addr)
   if ctx.pe.dos_hdr.e_magic != MAGIC_MZ: return LIBPE_E_NOT_A_PE_FILE
 
@@ -169,55 +178,214 @@ proc pe_parse*(ctx: ptr pe_ctx_t): pe_err_e =
       peSects[i] = cast[ptr IMAGE_SECTION_HEADER](sectAddr)
     ctx.pe.sections = addr peSects
 
-  LIBPE_E_OK
+proc pe_is_loaded*(ctx: ptr pe_ctx_t): bool = 
+  cast[int](ctx.map_addr) >= 0 and ctx.map_size > 0
+proc pe_is_pe*(ctx: ptr pe_ctx_t): bool = 
+  ctx.pe.dos_hdr.e_magic == MAGIC_MZ and ctx.pe.signature == SIGNATURE_PE
+proc pe_is_dll*(ctx: ptr pe_ctx_t): bool = 
+  bool(ctx.pe.coff_hdr.Characteristics.ImageCharacteristics and IMAGE_FILE_DLL)
+proc pe_filesize*(ctx: ptr pe_ctx_t): uint64 = ctx.map_size.uint64
+proc pe_dos*(ctx: ptr pe_ctx_t): ptr IMAGE_DOS_HEADER = ctx.pe.dos_hdr
+proc pe_coff*(ctx: ptr pe_ctx_t): ptr IMAGE_COFF_HEADER = ctx.pe.coff_hdr
+proc pe_optional*(ctx: ptr pe_ctx_t): ptr IMAGE_OPTIONAL_HEADER = 
+  addr ctx.pe.optional_hdr
+proc pe_directories_count*(ctx: ptr pe_ctx_t): uint32 = ctx.pe.num_directories
+proc pe_directories*(ctx: ptr pe_ctx_t): ptr Directories = ctx.pe.directories
+
+proc pe_sections_count*(ctx: ptr pe_ctx_t): uint16 = ctx.pe.num_sections
+proc pe_sections*(ctx: ptr pe_ctx_t): ptr Sections = ctx.pe.sections
+
+proc pe_section_name*(ctx: ptr pe_ctx_t, section_hdr: ptr IMAGE_SECTION_HEADER,
+                      out_name: var cstring, out_name_size: uint): cstring =
+  # This function is really stupid but I'll leave it for compatibility
+  out_name = section_hdr.Name
+  result = out_name
+
+proc pe_machine_type_name*(`type`: MachineType): cstring =
+  result = "IMAGE_FILE_MACHINE_UNKNOWN".cstring
+  type 
+    Machine = tuple
+      entryId: MachineType
+      name: string
+
+  const entries: seq[Machine] = @[  # TODO: Macro
+    (IMAGE_FILE_MACHINE_AM33, "IMAGE_FILE_MACHINE_AM33"),
+    (IMAGE_FILE_MACHINE_AMD64, "IMAGE_FILE_MACHINE_AMD64"),
+    (IMAGE_FILE_MACHINE_ARM, "IMAGE_FILE_MACHINE_ARM"),
+    (IMAGE_FILE_MACHINE_ARMV7, "IMAGE_FILE_MACHINE_ARMV7"),
+    (IMAGE_FILE_MACHINE_CEE, "IMAGE_FILE_MACHINE_CEE"),
+    (IMAGE_FILE_MACHINE_EBC, "IMAGE_FILE_MACHINE_EBC"),
+    (IMAGE_FILE_MACHINE_I386, "IMAGE_FILE_MACHINE_I386"),
+    (IMAGE_FILE_MACHINE_IA64, "IMAGE_FILE_MACHINE_IA64"),
+    (IMAGE_FILE_MACHINE_M32R, "IMAGE_FILE_MACHINE_M32R"),
+    (IMAGE_FILE_MACHINE_MIPS16, "IMAGE_FILE_MACHINE_MIPS16"),
+    (IMAGE_FILE_MACHINE_MIPSFPU, "IMAGE_FILE_MACHINE_MIPSFPU"),
+    (IMAGE_FILE_MACHINE_MIPSFPU16, "IMAGE_FILE_MACHINE_MIPSFPU16"),
+    (IMAGE_FILE_MACHINE_POWERPC, "IMAGE_FILE_MACHINE_POWERPC"),
+    (IMAGE_FILE_MACHINE_POWERPCFP, "IMAGE_FILE_MACHINE_POWERPCFP"),
+    (IMAGE_FILE_MACHINE_R4000, "IMAGE_FILE_MACHINE_R4000"),
+    (IMAGE_FILE_MACHINE_SH3, "IMAGE_FILE_MACHINE_SH3"),
+    (IMAGE_FILE_MACHINE_SH3DSP, "IMAGE_FILE_MACHINE_SH3DSP"),
+    (IMAGE_FILE_MACHINE_SH4, "IMAGE_FILE_MACHINE_SH4"),
+    (IMAGE_FILE_MACHINE_SH5, "IMAGE_FILE_MACHINE_SH5"),
+    (IMAGE_FILE_MACHINE_THUMB, "IMAGE_FILE_MACHINE_THUMB"),
+    (IMAGE_FILE_MACHINE_WCEMIPSV2, "IMAGE_FILE_MACHINE_WCEMIPSV2")
+  ]
+
+  for e in entries:
+    if e.entryId == `type`: return e.name.cstring
+
+proc pe_image_characteristic_name*(characteristic: ImageCharacteristics): cstring =
+  type 
+    ImageCharacteristicsName = tuple
+      entryId: ImageCharacteristics
+      name: string
+
+  const entries: seq[ImageCharacteristicsName] = @[
+    (IMAGE_FILE_RELOCS_STRIPPED, "IMAGE_FILE_RELOCS_STRIPPED"),
+    (IMAGE_FILE_EXECUTABLE_IMAGE, "IMAGE_FILE_EXECUTABLE_IMAGE"),
+    (IMAGE_FILE_LINE_NUMS_STRIPPED, "IMAGE_FILE_LINE_NUMS_STRIPPED"),
+    (IMAGE_FILE_LOCAL_SYMS_STRIPPED, "IMAGE_FILE_LOCAL_SYMS_STRIPPED"),
+    (IMAGE_FILE_AGGRESSIVE_WS_TRIM, "IMAGE_FILE_AGGRESSIVE_WS_TRIM"),
+    (IMAGE_FILE_LARGE_ADDRESS_AWARE, "IMAGE_FILE_LARGE_ADDRESS_AWARE"),
+    (IMAGE_FILE_RESERVED, "IMAGE_FILE_RESERVED"),
+    (IMAGE_FILE_BYTES_REVERSED_LO, "IMAGE_FILE_BYTES_REVERSED_LO"),
+    (IMAGE_FILE_32BIT_MACHINE, "IMAGE_FILE_32BIT_MACHINE"),
+    (IMAGE_FILE_DEBUG_STRIPPED, "IMAGE_FILE_DEBUG_STRIPPED"),
+    (IMAGE_FILE_REMOVABLE_RUN_FROM_SWAP, "IMAGE_FILE_REMOVABLE_RUN_FROM_SWAP"),
+    (IMAGE_FILE_NET_RUN_FROM_SWAP, "IMAGE_FILE_NET_RUN_FROM_SWAP"),
+    (IMAGE_FILE_SYSTEM, "IMAGE_FILE_SYSTEM"),
+    (IMAGE_FILE_DLL, "IMAGE_FILE_DLL"),
+    (IMAGE_FILE_UP_SYSTEM_ONLY, "IMAGE_FILE_UP_SYSTEM_ONLY"),
+    (IMAGE_FILE_BYTES_REVERSED_HI, "IMAGE_FILE_BYTES_REVERSED_HI")
+  ]
+
+  for e in entries:
+    if e.entryId == characteristic: return e.name.cstring
+
+proc pe_image_dllcharacteristic_name*(characteristic: ImageDllCharacteristics): cstring =
+  type 
+    ImageDllCharacteristicsName = tuple
+      entryId: ImageDllCharacteristics
+      name: string
+
+  const entries: seq[ImageDllCharacteristicsName] = @[
+    (IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE, "IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE"),
+    (IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY, "IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY"),
+    (IMAGE_DLLCHARACTERISTICS_NX_COMPAT, "IMAGE_DLLCHARACTERISTICS_NX_COMPAT"),
+    (IMAGE_DLLCHARACTERISTICS_NO_ISOLATION, "IMAGE_DLLCHARACTERISTICS_NO_ISOLATION"),
+    (IMAGE_DLLCHARACTERISTICS_NO_SEH, "IMAGE_DLLCHARACTERISTICS_NO_SEH"),
+    (IMAGE_DLLCHARACTERISTICS_NO_BIND, "IMAGE_DLLCHARACTERISTICS_NO_BIND"),
+    (IMAGE_DLLCHARACTERISTICS_WDM_DRIVER, "IMAGE_DLLCHARACTERISTICS_WDM_DRIVER"),
+    (IMAGE_DLLCHARACTERISTICS_TERMINAL_SERVER_AWARE, "IMAGE_DLLCHARACTERISTICS_TERMINAL_SERVER_AWARE")
+  ]
+
+  for e in entries:
+    if e.entryId == characteristic: return e.name.cstring
+
+proc pe_windows_subsystem_name*(subsystem: WindowsSubsystem): cstring =
+  result = "IMAGE_SUBSYSTEM_UNKNOWN".cstring
+  type 
+    WindowsSubsystemName = tuple
+      entryId: WindowsSubsystem
+      name: string
+
+  const entries: seq[WindowsSubsystemName] = @[
+    (IMAGE_SUBSYSTEM_NATIVE, "IMAGE_SUBSYSTEM_NATIVE"),
+    (IMAGE_SUBSYSTEM_WINDOWS_GUI, "IMAGE_SUBSYSTEM_WINDOWS_GUI"),
+    (IMAGE_SUBSYSTEM_WINDOWS_CUI, "IMAGE_SUBSYSTEM_WINDOWS_CUI"),
+    (IMAGE_SUBSYSTEM_OS2_CUI, "IMAGE_SUBSYSTEM_OS2_CUI"),
+    (IMAGE_SUBSYSTEM_POSIX_CUI, "IMAGE_SUBSYSTEM_POSIX_CUI"),
+    (IMAGE_SUBSYSTEM_WINDOWS_CE_GUI, "IMAGE_SUBSYSTEM_WINDOWS_CE_GUI"),
+    (IMAGE_SUBSYSTEM_EFI_APPLICATION, "IMAGE_SUBSYSTEM_EFI_APPLICATION"),
+    (IMAGE_SUBSYSTEM_EFI_BOOT_SERVICE_DRIVER, "IMAGE_SUBSYSTEM_EFI_BOOT_SERVICE_DRIVER"),
+    (IMAGE_SUBSYSTEM_EFI_RUNTIME_DRIVER, "IMAGE_SUBSYSTEM_EFI_RUNTIME_DRIVER"),
+    (IMAGE_SUBSYSTEM_EFI_ROM, "IMAGE_SUBSYSTEM_EFI_ROM"),
+    (IMAGE_SUBSYSTEM_XBOX, "IMAGE_SUBSYSTEM_XBOX"),
+    (IMAGE_SUBSYSTEM_WINDOWS_BOOT_APPLICATION, "IMAGE_SUBSYSTEM_WINDOWS_BOOT_APPLICATION")
+  ]
+
+  for e in entries:
+    if e.entryId == subsystem: return e.name.cstring
+
+proc pe_directory_name*(entry: ImageDirectoryEntry): cstring =
+  type 
+    ImageDirectoryEntryName = tuple
+      entryId: ImageDirectoryEntry
+      name: string
+
+  const entries: seq[ImageDirectoryEntryName] = @[
+    (IMAGE_DIRECTORY_ENTRY_EXPORT, "IMAGE_DIRECTORY_ENTRY_EXPORT"),
+    (IMAGE_DIRECTORY_ENTRY_IMPORT, "IMAGE_DIRECTORY_ENTRY_IMPORT"),
+    (IMAGE_DIRECTORY_ENTRY_RESOURCE, "IMAGE_DIRECTORY_ENTRY_RESOURCE"),
+    (IMAGE_DIRECTORY_ENTRY_EXCEPTION, "IMAGE_DIRECTORY_ENTRY_EXCEPTION"),
+    (IMAGE_DIRECTORY_ENTRY_SECURITY, "IMAGE_DIRECTORY_ENTRY_SECURITY"),
+    (IMAGE_DIRECTORY_ENTRY_BASERELOC, "IMAGE_DIRECTORY_ENTRY_BASERELOC"),
+    (IMAGE_DIRECTORY_ENTRY_DEBUG, "IMAGE_DIRECTORY_ENTRY_DEBUG"),
+    (IMAGE_DIRECTORY_ENTRY_ARCHITECTURE, "IMAGE_DIRECTORY_ENTRY_ARCHITECTURE"),
+    (IMAGE_DIRECTORY_ENTRY_GLOBALPTR, "IMAGE_DIRECTORY_ENTRY_GLOBALPTR"),
+    (IMAGE_DIRECTORY_ENTRY_TLS, "IMAGE_DIRECTORY_ENTRY_TLS"),
+    (IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG, "IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG"),
+    (IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT, "IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT"),
+    (IMAGE_DIRECTORY_ENTRY_IAT, "IMAGE_DIRECTORY_ENTRY_IAT"),
+    (IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT, "IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT"),
+    (IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, "IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR"),
+    (IMAGE_DIRECTORY_RESERVED, "IMAGE_DIRECTORY_RESERVED")
+  ]
+
+  for e in entries:
+    if e.entryId == entry: return e.name.cstring
+
+proc pe_section_characteristic_name*(characteristic: SectionCharacteristics): cstring =
+  type 
+    SectionCharacteristicsName = tuple
+      entryId: SectionCharacteristics
+      name: string
+
+  const entries: seq[SectionCharacteristicsName] = @[
+    (IMAGE_SCN_TYPE_NO_PAD, "IMAGE_SCN_TYPE_NO_PAD"),
+    (IMAGE_SCN_CNT_CODE, "IMAGE_SCN_CNT_CODE"),
+    (IMAGE_SCN_CNT_INITIALIZED_DATA, "IMAGE_SCN_CNT_INITIALIZED_DATA"),
+    (IMAGE_SCN_CNT_UNINITIALIZED_DATA, "IMAGE_SCN_CNT_UNINITIALIZED_DATA"),
+    (IMAGE_SCN_LNK_OTHER, "IMAGE_SCN_LNK_OTHER"),
+    (IMAGE_SCN_LNK_INFO, "IMAGE_SCN_LNK_INFO"),
+    (IMAGE_SCN_LNK_REMOVE, "IMAGE_SCN_LNK_REMOVE"),
+    (IMAGE_SCN_LNK_COMDAT, "IMAGE_SCN_LNK_COMDAT"),
+    (IMAGE_SCN_NO_DEFER_SPEC_EXC, "IMAGE_SCN_NO_DEFER_SPEC_EXC"),
+    (IMAGE_SCN_GPREL, "IMAGE_SCN_GPREL"),
+    (IMAGE_SCN_MEM_PURGEABLE, "IMAGE_SCN_MEM_PURGEABLE"),
+    (IMAGE_SCN_MEM_LOCKED, "IMAGE_SCN_MEM_LOCKED"),
+    (IMAGE_SCN_MEM_PRELOAD, "IMAGE_SCN_MEM_PRELOAD"),
+    (IMAGE_SCN_ALIGN_1BYTES, "IMAGE_SCN_ALIGN_1BYTES"),
+    (IMAGE_SCN_ALIGN_2BYTES, "IMAGE_SCN_ALIGN_2BYTES"),
+    (IMAGE_SCN_ALIGN_4BYTES, "IMAGE_SCN_ALIGN_4BYTES"),
+    (IMAGE_SCN_ALIGN_8BYTES, "IMAGE_SCN_ALIGN_8BYTES"),
+    (IMAGE_SCN_ALIGN_16BYTES, "IMAGE_SCN_ALIGN_16BYTES"),
+    (IMAGE_SCN_ALIGN_32BYTES, "IMAGE_SCN_ALIGN_32BYTES"),
+    (IMAGE_SCN_ALIGN_64BYTES, "IMAGE_SCN_ALIGN_64BYTES"),
+    (IMAGE_SCN_ALIGN_128BYTES, "IMAGE_SCN_ALIGN_128BYTES"),
+    (IMAGE_SCN_ALIGN_256BYTES, "IMAGE_SCN_ALIGN_256BYTES"),
+    (IMAGE_SCN_ALIGN_512BYTES, "IMAGE_SCN_ALIGN_512BYTES"),
+    (IMAGE_SCN_ALIGN_1024BYTES, "IMAGE_SCN_ALIGN_1024BYTES"),
+    (IMAGE_SCN_ALIGN_2048BYTES, "IMAGE_SCN_ALIGN_2048BYTES"),
+    (IMAGE_SCN_ALIGN_4096BYTES, "IMAGE_SCN_ALIGN_4096BYTES"),
+    (IMAGE_SCN_ALIGN_8192BYTES, "IMAGE_SCN_ALIGN_8192BYTES"),
+    (IMAGE_SCN_LNK_NRELOC_OVFL, "IMAGE_SCN_LNK_NRELOC_OVFL"),
+    (IMAGE_SCN_MEM_DISCARDABLE, "IMAGE_SCN_MEM_DISCARDABLE"),
+    (IMAGE_SCN_MEM_NOT_CACHED, "IMAGE_SCN_MEM_NOT_CACHED"),
+    (IMAGE_SCN_MEM_NOT_PAGED, "IMAGE_SCN_MEM_NOT_PAGED"),
+    (IMAGE_SCN_MEM_SHARED, "IMAGE_SCN_MEM_SHARED"),
+    (IMAGE_SCN_MEM_EXECUTE, "IMAGE_SCN_MEM_EXECUTE"),
+    (IMAGE_SCN_MEM_READ, "IMAGE_SCN_MEM_READ"),
+    (IMAGE_SCN_MEM_WRITE, "IMAGE_SCN_MEM_WRITE")
+  ]
+
+  for e in entries:
+    if e.entryId == characteristic: return e.name.cstring
 
 {.push dynlib: libpePath.}
 
-proc pe_can_read*(ctx: ptr pe_ctx_t, `ptr`: pointer, size: uint): bool {.
-    importc, cdecl, imppeHdr.}
 
-proc pe_is_loaded*(ctx: ptr pe_ctx_t): bool {.importc, cdecl, imppeHdr.}
-proc pe_is_pe*(ctx: ptr pe_ctx_t): bool {.importc, cdecl, imppeHdr.}
-proc pe_is_dll*(ctx: ptr pe_ctx_t): bool {.importc, cdecl, imppeHdr.}
-proc pe_filesize*(ctx: ptr pe_ctx_t): uint64 {.importc, cdecl, imppeHdr.}
-proc pe_rva2section*(ctx: ptr pe_ctx_t, rva: uint64): ptr IMAGE_SECTION_HEADER {.
-    importc, cdecl, imppeHdr.}
-proc pe_rva2ofs*(ctx: ptr pe_ctx_t, rva: uint64): uint64 {.importc, cdecl,
-    imppeHdr.}
-proc pe_ofs2rva*(ctx: ptr pe_ctx_t, ofs: uint64): uint64 {.importc, cdecl,
-    imppeHdr.}
-proc pe_dos*(ctx: ptr pe_ctx_t): ptr IMAGE_DOS_HEADER {.importc, cdecl, imppeHdr.}  ##   Header functions
-
-proc pe_coff*(ctx: ptr pe_ctx_t): ptr IMAGE_COFF_HEADER {.importc, cdecl,
-    imppeHdr.}
-proc pe_optional*(ctx: ptr pe_ctx_t): ptr IMAGE_OPTIONAL_HEADER {.importc,
-    cdecl, imppeHdr.}
-proc pe_directories_count*(ctx: ptr pe_ctx_t): uint32 {.importc, cdecl, imppeHdr.}
-proc pe_directories*(ctx: ptr pe_ctx_t): ptr Directories = ctx.pe.directories
-# proc pe_directories*(ctx: ptr pe_ctx_t): ptr UncheckedArray[ptr IMAGE_DATA_DIRECTORY] {.importc,
-#     cdecl, imppeHdr.}
-proc pe_directory_by_entry*(ctx: ptr pe_ctx_t, entry: ImageDirectoryEntry): ptr IMAGE_DATA_DIRECTORY {.
-    importc, cdecl, imppeHdr.}
-proc pe_sections_count*(ctx: ptr pe_ctx_t): uint16 {.importc, cdecl, imppeHdr.}
-proc pe_sections*(ctx: ptr pe_ctx_t): ptr UncheckedArray[ptr IMAGE_SECTION_HEADER] {.importc,
-    cdecl, imppeHdr.}
-proc pe_section_by_name*(ctx: ptr pe_ctx_t, section_name: cstring): ptr IMAGE_SECTION_HEADER {.
-    importc, cdecl, imppeHdr.}
-proc pe_section_name*(ctx: ptr pe_ctx_t, section_hdr: ptr IMAGE_SECTION_HEADER,
-                      out_name: cstring, out_name_size: uint): cstring {.
-    importc, cdecl, imppeHdr.}
-proc pe_machine_type_name*(`type`: MachineType): cstring {.importc, cdecl,
-    imppeHdr.}
-proc pe_image_characteristic_name*(characteristic: ImageCharacteristics): cstring {.
-    importc, cdecl, imppeHdr.}
-proc pe_image_dllcharacteristic_name*(characteristic: ImageDllCharacteristics): cstring {.
-    importc, cdecl, imppeHdr.}
-proc pe_windows_subsystem_name*(subsystem: WindowsSubsystem): cstring {.importc,
-    cdecl, imppeHdr.}
-proc pe_directory_name*(entry: ImageDirectoryEntry): cstring {.importc, cdecl,
-    imppeHdr.}
-proc pe_section_characteristic_name*(characteristic: SectionCharacteristics): cstring {.
-    importc, cdecl, imppeHdr.}
 proc pe_hash_recommended_size*(): uint {.importc, cdecl, imppeHdr.}  ##   Hash functions
 proc pe_hash_raw_data*(output: cstring, output_size: uint, alg_name: cstring,
                        data: ptr uint8, data_size: uint): bool {.importc,
@@ -268,6 +436,9 @@ proc pe_resource_parse_string_u*(ctx: ptr pe_ctx_t; output: cstring;
 
 {.pop.}
 
+
+
+
 iterator sections*(ctx: var pe_ctx_t): ptr IMAGE_SECTION_HEADER =
   let peSections = pe_sections(addr ctx)
   for i in 0..<pe_sections_count(addr ctx).Natural: 
@@ -277,3 +448,39 @@ iterator directories*(ctx: var pe_ctx_t): (ImageDirectoryEntry, ptr IMAGE_DATA_D
   for i in 0..<pe_directories_count(addr ctx).Natural:
     if ctx.pe.directories[i].Size == 0: continue
     yield (i.ImageDirectoryEntry, ctx.pe.directories[i])
+
+proc pe_rva2section*(ctx: ptr pe_ctx_t, rva: uint64): ptr IMAGE_SECTION_HEADER =
+  if rva == 0 or ctx.pe.num_sections == 0: return   # TODO: raise an exception or sth?
+  for sect in ctx[].sections:
+    if rva >= sect.VirtualAddress and rva <= sect.VirtualAddress + sect.Misc.VirtualSize:
+      return sect
+
+proc pe_rva2ofs*(ctx: ptr pe_ctx_t, rva: uint64): uint64 =
+  if rva == 0 or ctx.pe.num_sections == 0: return 0
+  for sect in ctx[].sections:
+    var sectSize = sect.Misc.VirtualSize
+    if sectSize == 0:
+      sectSize = sect.SizeOfRawData
+    if sect.VirtualAddress <= rva:
+      if sect.VirtualAddress + sectSize > rva:
+        result = rva - sect.VirtualAddress
+        return result + sect.PointerToRawData
+  if ctx.pe.num_sections == 1:  # Handle PE with a single section
+    result = rva - ctx.pe.sections[0].VirtualAddress
+    return result + ctx.pe.sections[0].PointerToRawData
+
+proc pe_ofs2rva*(ctx: ptr pe_ctx_t, ofs: uint64): uint64 =
+  if ofs == 0 or ctx.pe.num_sections == 0: return 0
+  for sect in ctx[].sections:
+    if sect.PointerToRawData <= ofs:
+      if sect.PointerToRawData + sect.SizeOfRawData > ofs:
+        result = ofs - sect.PointerToRawData
+        return result + sect.VirtualAddress
+
+proc pe_directory_by_entry*(ctx: ptr pe_ctx_t, entry: var ImageDirectoryEntry): ptr IMAGE_DATA_DIRECTORY =
+  for dir in ctx[].directories:
+    if dir[0] == entry: return dir[1]
+
+proc pe_section_by_name*(ctx: ptr pe_ctx_t, section_name: cstring): ptr IMAGE_SECTION_HEADER =
+  for sect in ctx[].sections:
+    if sect.Name == section_name: return sect
