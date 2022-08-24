@@ -13,8 +13,6 @@ import libpe/hashes
 import libpe/resources
 import libpe/dir_resources
 
-var mFile: MemFile
-
 when defined(MacOsX):
   const libpePath = "/usr/local/opt/pev/lib/libpe.1.0.dylib"
 elif defined(mingw):
@@ -42,6 +40,9 @@ const
   LIBPE_OPT_OPEN_RW* = 2.pe_option_e  # Open file for read and writing
 
 type
+  Sections = array[0..MAX_SECTIONS, ptr IMAGE_SECTION_HEADER]
+  Directories = array[0..MAX_DIRECTORIES, ptr IMAGE_DATA_DIRECTORY]
+
   pe_options_e* {.importc, imppeHdr.} = uint16  ##   bitmasked pe_option_e values
 
   pe_file_t* {.bycopy, importc, imppeHdr.} = object
@@ -52,10 +53,10 @@ type
     optional_hdr*: IMAGE_OPTIONAL_HEADER  ##   Directories
     num_directories*: uint32  ##   Directories
     directories_ptr*: pointer
-    directories*: ptr ptr IMAGE_DATA_DIRECTORY  ##   array up to MAX_DIRECTORIES  ##      Sections
+    directories*: ptr Directories  ##   array up to MAX_DIRECTORIES  ##      Sections
     num_sections*: uint16  ##   array up to MAX_DIRECTORIES  ##      Sections
     sections_ptr*: pointer
-    sections*: ptr ptr IMAGE_SECTION_HEADER  ##   array up to MAX_SECTIONS
+    sections*: ptr Sections  ##   array up to MAX_SECTIONS
     entrypoint*: uint64  ##   array up to MAX_SECTIONS
     imagebase*: uint64
 
@@ -78,35 +79,103 @@ type
 
   pe_ctx_t* {.importc, imppeHdr.} = pe_ctx
 
+var 
+  mFile: MemFile
+  peDirs: Directories
+  peSects: Sections
+
+# proc `+`(a: pointer, b: pointer): pointer = cast[pointer](cast[int](a) + cast[int](b))
+proc `+`(a: pointer, s: Natural): pointer = cast[pointer](cast[int](a) + s)
+
+converter ptrToPtrUint(a: pointer): ptr uint = cast[ptr uint](a)
+converter ptrToPtrUint32(a: pointer): ptr uint32 = cast[ptr uint32](a)
 
 proc pe_load_file_ext*(ctx: ptr pe_ctx_t, path: cstring, options: pe_options_e): pe_err_e =
-    result = LIBPE_E_OK
-    ctx.path = path
-    mFile = memfiles.open($path, mode=fmReadWriteExisting)  # try return LIBPE_E_OPEN_FAILED
-    # return LIBPE_E_NOT_A_FILE if not a file
-    ctx.map_size = mFile.size
-    ctx.map_addr = mFile.mem  # return LIBPE_E_MMAP_FAILED if error
-    ctx.map_end = cast[ptr uint](cast[int](ctx.map_addr) + mFile.size)
-
-    #TODO:? madvise(ctx->map_addr, ctx->map_size, MADV_SEQUENTIAL);
-    #TODO: OpenSSL_add_all_digests();
+  result = LIBPE_E_OK
+  ctx.path = path
+  mFile = memfiles.open($path, mode=fmReadWriteExisting)  # try return LIBPE_E_OPEN_FAILED
+  # return LIBPE_E_NOT_A_FILE if not a file
+  ctx.map_size = mFile.size.clong
+  ctx.map_addr = mFile.mem  # return LIBPE_E_MMAP_FAILED if error
+  ctx.map_end = ctx.map_addr + mFile.size
+  #TODO:? madvise(ctx->map_addr, ctx->map_size, MADV_SEQUENTIAL);
+  #TODO: OpenSSL_add_all_digests();
 
 proc pe_load_file*(ctx: ptr pe_ctx_t, path: cstring): pe_err_e =
-    return pe_load_file_ext(ctx, path, cast[pe_options_e](0))
+  return pe_load_file_ext(ctx, path, cast[pe_options_e](0))
 
 proc pe_unload*(ctx: ptr pe_ctx_t): pe_err_e =
-    if ctx.map_addr != mFile.mem:
-        return LIBPE_E_MUNMAP_FAILED
-    else:
-        mFile.close()
-    LIBPE_E_OK
+  if ctx.map_addr != mFile.mem:
+      return LIBPE_E_MUNMAP_FAILED
+  else:
+      mFile.close()
+  LIBPE_E_OK
+
+proc pe_parse*(ctx: ptr pe_ctx_t): pe_err_e =
+  ctx.pe.dos_hdr = cast[ptr IMAGE_DOS_HEADER](ctx.map_addr)
+  if ctx.pe.dos_hdr.e_magic != MAGIC_MZ: return LIBPE_E_NOT_A_PE_FILE
+
+  var signature_ptr: ptr uint32 = ctx.pe.dos_hdr + ctx.pe.dos_hdr.e_lfanew
+
+  # if (not pe_can_read(addr ctx, signature_ptr, LIBPE_SIZEOF_MEMBER(pe_file_t, signature))):
+  # 	return LIBPE_E_INVALID_LFANEW
+
+  ctx.pe.signature = signature_ptr[]
+  if ctx.pe.signature != SIGNATURE_PE and ctx.pe.signature != SIGNATURE_NE: return LIBPE_E_INVALID_SIGNATURE
+
+  ctx.pe.coff_hdr = cast[ptr IMAGE_COFF_HEADER](signature_ptr + sizeof(ctx.pe.signature))
+
+  #if (!pe_can_read(ctx, ctx->pe.coff_hdr, sizeof(IMAGE_COFF_HEADER)))
+  # return LIBPE_E_MISSING_COFF_HEADER;
+
+  ctx.pe.num_sections = ctx.pe.coff_hdr.NumberOfSections
+
+  ctx.pe.optional_hdr_ptr = ctx.pe.coff_hdr + sizeof(IMAGE_COFF_HEADER)
+  ctx.pe.optional_hdr.`type` = cast[ptr uint16](ctx.pe.optional_hdr_ptr)[]
+
+  case ctx.pe.optional_hdr.`type`:  # TODO: use template to avoid repetition
+  of MAGIC_PE32.uint16:
+    ctx.pe.optional_hdr.h_32 = cast[ptr IMAGE_OPTIONAL_HEADER_32](ctx.pe.optional_hdr_ptr)
+    ctx.pe.optional_hdr.length = sizeof(IMAGE_OPTIONAL_HEADER_32).uint
+    ctx.pe.num_directories = ctx.pe.optional_hdr.h_32.NumberOfRvaAndSizes
+    ctx.pe.entrypoint = ctx.pe.optional_hdr.h_32.AddressOfEntryPoint
+    ctx.pe.imagebase = ctx.pe.optional_hdr.h_32.ImageBase;
+  of MAGIC_PE64.uint16:
+    ctx.pe.optional_hdr.h_64 = cast[ptr IMAGE_OPTIONAL_HEADER_64](ctx.pe.optional_hdr_ptr)
+    ctx.pe.optional_hdr.length = sizeof(IMAGE_OPTIONAL_HEADER_64).uint
+    ctx.pe.num_directories = ctx.pe.optional_hdr.h_64.NumberOfRvaAndSizes;
+    ctx.pe.entrypoint = ctx.pe.optional_hdr.h_64.AddressOfEntryPoint;
+    ctx.pe.imagebase = ctx.pe.optional_hdr.h_64.ImageBase;
+  else:
+    return LIBPE_E_UNSUPPORTED_IMAGE
+
+  if ctx.pe.num_directories > MAX_DIRECTORIES: return LIBPE_E_TOO_MANY_DIRECTORIES
+  if ctx.pe.num_sections > MAX_SECTIONS: return LIBPE_E_TOO_MANY_SECTIONS
+
+  ctx.pe.directories_ptr = ctx.pe.optional_hdr_ptr + ctx.pe.optional_hdr.length
+
+  let sectionOffset = sizeof(ctx.pe.signature) + sizeof(IMAGE_COFF_HEADER) + ctx.pe.coff_hdr.SizeOfOptionalHeader.int
+  ctx.pe.sections_ptr = signature_ptr + sectionOffset
+
+  if ctx.pe.num_directories > 0:
+    for i in 0..<ctx.pe.num_directories:
+      let dirAddr = ctx.pe.directories_ptr + (i.int * sizeof(IMAGE_DATA_DIRECTORY))
+      peDirs[i] = cast[ptr IMAGE_DATA_DIRECTORY](dirAddr)
+    ctx.pe.directories = addr peDirs
+
+  if ctx.pe.num_sections > 0:
+    for i in 0..<ctx.pe.num_sections.Natural:
+      let sectAddr = ctx.pe.sections_ptr + (i * sizeof(IMAGE_SECTION_HEADER))
+      peSects[i] = cast[ptr IMAGE_SECTION_HEADER](sectAddr)
+    ctx.pe.sections = addr peSects
+
+  LIBPE_E_OK
 
 {.push dynlib: libpePath.}
 
 proc pe_can_read*(ctx: ptr pe_ctx_t, `ptr`: pointer, size: uint): bool {.
     importc, cdecl, imppeHdr.}
 
-proc pe_parse*(ctx: ptr pe_ctx_t): pe_err_e {.importc, cdecl, imppeHdr.}
 proc pe_is_loaded*(ctx: ptr pe_ctx_t): bool {.importc, cdecl, imppeHdr.}
 proc pe_is_pe*(ctx: ptr pe_ctx_t): bool {.importc, cdecl, imppeHdr.}
 proc pe_is_dll*(ctx: ptr pe_ctx_t): bool {.importc, cdecl, imppeHdr.}
@@ -124,8 +193,9 @@ proc pe_coff*(ctx: ptr pe_ctx_t): ptr IMAGE_COFF_HEADER {.importc, cdecl,
 proc pe_optional*(ctx: ptr pe_ctx_t): ptr IMAGE_OPTIONAL_HEADER {.importc,
     cdecl, imppeHdr.}
 proc pe_directories_count*(ctx: ptr pe_ctx_t): uint32 {.importc, cdecl, imppeHdr.}
-proc pe_directories*(ctx: ptr pe_ctx_t): ptr UncheckedArray[ptr IMAGE_DATA_DIRECTORY] {.importc,
-    cdecl, imppeHdr.}
+proc pe_directories*(ctx: ptr pe_ctx_t): ptr Directories = ctx.pe.directories
+# proc pe_directories*(ctx: ptr pe_ctx_t): ptr UncheckedArray[ptr IMAGE_DATA_DIRECTORY] {.importc,
+#     cdecl, imppeHdr.}
 proc pe_directory_by_entry*(ctx: ptr pe_ctx_t, entry: ImageDirectoryEntry): ptr IMAGE_DATA_DIRECTORY {.
     importc, cdecl, imppeHdr.}
 proc pe_sections_count*(ctx: ptr pe_ctx_t): uint16 {.importc, cdecl, imppeHdr.}
@@ -204,7 +274,6 @@ iterator sections*(ctx: var pe_ctx_t): ptr IMAGE_SECTION_HEADER =
     yield peSections[i]
 
 iterator directories*(ctx: var pe_ctx_t): (ImageDirectoryEntry, ptr IMAGE_DATA_DIRECTORY) =
-  let peDirectories = pe_directories(addr ctx)
   for i in 0..<pe_directories_count(addr ctx).Natural:
-    if peDirectories[i].Size == 0: continue
-    yield (i.ImageDirectoryEntry, peDirectories[i])
+    if ctx.pe.directories[i].Size == 0: continue
+    yield (i.ImageDirectoryEntry, ctx.pe.directories[i])
