@@ -113,11 +113,15 @@ suite "Testing PE32+ exe":
   test "PE Imphash":
     check $pe_imphash(addr ctx, LIBPE_IMPHASH_FLAVOR_PEFILE) == "4db27267734d1576d75c991dc70f68ac"
     
+
+  test "pe_hash_recommended_size":
+    check pe_hash_recommended_size() == 148
+    
   test "PE Hashing":
     let hSize = pe_hash_recommended_size()
     let sectHashes = pe_get_sections_hash(addr ctx)
 
-    var output = newString(hSize)  # Looks risky
+    var output = newString(hSize)
     ## MD5
     output.setLen(32)
     discard pe_hash_raw_data(output.cstring, hSize, "md5".cstring, 

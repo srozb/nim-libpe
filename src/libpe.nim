@@ -85,6 +85,8 @@ var
   mFile: MemFile
   peDirs: Directories
   peSects: Sections
+  gExports: pe_exports_t
+  # gImports: pe_imports_t
 
 # proc `+`(a: pointer, b: pointer): pointer = cast[pointer](cast[int](a) + cast[int](b))
 proc `+`(a: pointer, s: Natural): pointer = cast[pointer](cast[int](a) + s)
@@ -383,9 +385,150 @@ proc pe_section_characteristic_name*(characteristic: SectionCharacteristics): cs
   for e in entries:
     if e.entryId == characteristic: return e.name.cstring
 
+iterator sections*(ctx: var pe_ctx_t): ptr IMAGE_SECTION_HEADER =
+  let peSections = pe_sections(addr ctx)
+  for i in 0..<pe_sections_count(addr ctx).Natural: 
+    yield peSections[i]
+
+iterator directories*(ctx: var pe_ctx_t): (ImageDirectoryEntry, ptr IMAGE_DATA_DIRECTORY) =
+  for i in 0..<pe_directories_count(addr ctx).Natural:
+    if ctx.pe.directories[i].Size == 0: continue
+    yield (i.ImageDirectoryEntry, ctx.pe.directories[i])
+
+proc pe_directory_by_entry*(ctx: ptr pe_ctx_t, entry: ImageDirectoryEntry): ptr IMAGE_DATA_DIRECTORY =
+  for dir in ctx[].directories:
+    if dir[0] == entry: return dir[1]
+
+proc pe_section_by_name*(ctx: ptr pe_ctx_t, section_name: cstring): ptr IMAGE_SECTION_HEADER =
+  for sect in ctx[].sections:
+    if sect.Name == section_name: return sect
+
+proc pe_rva2section*(ctx: ptr pe_ctx_t, rva: uint64): ptr IMAGE_SECTION_HEADER =
+  if rva == 0 or ctx.pe.num_sections == 0: return   # TODO: raise an exception or sth?
+  for sect in ctx[].sections:
+    if rva >= sect.VirtualAddress and rva <= sect.VirtualAddress + sect.Misc.VirtualSize:
+      return sect
+
+proc pe_rva2ofs*(ctx: ptr pe_ctx_t, rva: uint64): uint64 =
+  if rva == 0 or ctx.pe.num_sections == 0: return 0
+  for sect in ctx[].sections:
+    var sectSize = sect.Misc.VirtualSize
+    if sectSize == 0:
+      sectSize = sect.SizeOfRawData
+    if sect.VirtualAddress <= rva:
+      if sect.VirtualAddress + sectSize > rva:
+        result = rva - sect.VirtualAddress
+        return result + sect.PointerToRawData
+  if ctx.pe.num_sections == 1:  # Handle PE with a single section
+    result = rva - ctx.pe.sections[0].VirtualAddress
+    return result + ctx.pe.sections[0].PointerToRawData
+
+proc pe_ofs2rva*(ctx: ptr pe_ctx_t, ofs: uint64): uint64 =
+  if ofs == 0 or ctx.pe.num_sections == 0: return 0
+  for sect in ctx[].sections:
+    if sect.PointerToRawData <= ofs:
+      if sect.PointerToRawData + sect.SizeOfRawData > ofs:
+        result = ofs - sect.PointerToRawData
+        return result + sect.VirtualAddress
+
+# proc pe_imports*(ctx: ptr pe_ctx_t): ptr pe_imports_t =
+#   discard
+
+proc pe_exports*(ctx: ptr pe_ctx_t): ptr pe_exports_t =  # CHECK: ensure cache is working
+  if ctx.cached_data.exports != nil: return ctx.cached_data.exports
+  var exports: pe_exports_t
+  exports.err = LIBPE_E_OK
+
+  let dir = pe_directory_by_entry(ctx, IMAGE_DIRECTORY_ENTRY_EXPORT)
+  if dir.isNil: return addr exports # means no exports present
+
+  let va = dir.VirtualAddress
+  if va == 0: return
+
+  var ofs = pe_rva2ofs(ctx, va)
+  var exp = cast[ptr IMAGE_EXPORT_DIRECTORY](ctx.map_addr + ofs)
+
+  if not pe_can_read(ctx, exp, sizeof(IMAGE_EXPORT_DIRECTORY).uint): 
+    exports.err = LIBPE_E_EXPORTS_CANT_READ_DIR
+    return
+
+  ofs = pe_rva2ofs(ctx, exp.Name)
+  let name_ptr = ctx.map_addr + ofs
+  if not pe_can_read(ctx, name_ptr, 1):
+    exports.err = LIBPE_E_EXPORTS_CANT_READ_RVA
+    return
+
+  exports.name = cast[cstring](name_ptr)
+  let ordinal_base = exp[].Base
+
+  ofs = pe_rva2ofs(ctx, exp.AddressOfNames)
+  let rva_ptr = ctx.map_addr + ofs
+  if not pe_can_read(ctx, rva_ptr, sizeof(uint32).uint):
+    exports.err = LIBPE_E_EXPORTS_CANT_READ_RVA
+    return
+
+  exports.functions_count = exp.NumberOfFunctions
+
+  var expFuncs = newSeq[pe_exported_function_t](exp.NumberOfFunctions)
+  exports.functions = cast[ptr UncheckedArray[pe_exported_function_t]](addr expFuncs[0])
+  # (ordinal: 0, name: nil, fwd_name: nil, address: 0)
+
+  let offset_to_AddressOfFunctions = pe_rva2ofs(ctx, exp.AddressOfFunctions)
+  let offset_to_AddressOfNames = pe_rva2ofs(ctx, exp.AddressOfNames)
+  let offset_to_AddressOfNameOrdinals = pe_rva2ofs(ctx, exp.AddressOfNameOrdinals)
+
+  var offsets_to_Names = newSeq[ptr uint64](exp.NumberOfFunctions)  # or maybe pointer
+
+  for i in 0..<exp.NumberOfNames:
+    let entry_ordinal_list_ptr = offset_to_AddressOfNameOrdinals + sizeof(uint16).uint * i
+    let entry_ordinal_list = ctx.map_addr + entry_ordinal_list_ptr  # todo: entry_ord_l -> ordinal
+
+    if not pe_can_read(ctx, entry_ordinal_list, sizeof(uint16).uint):
+      discard  # TODO: raise exception 
+
+    let ordinal = cast[ptr uint16](entry_ordinal_list)[]
+    let entry_name_list_ptr = offset_to_AddressOfNames + sizeof(uint32).uint * i
+    let entry_name_list = ctx.map_addr + entry_name_list_ptr
+
+    if not pe_can_read(ctx, entry_name_list, sizeof(uint32).uint):
+      discard  # TODO: raise exception
+
+    let entry_name_rva = cast[ptr uint32](entry_name_list)[]
+    let entry_name_ofs = pe_rva2ofs(ctx, entry_name_rva.uint64)
+
+    if ordinal.int < exp.NumberOfFunctions.int:
+      offsets_to_Names[ordinal] = cast[ptr uint64](entry_name_ofs)
+
+  for i in 0..<exp.NumberOfFunctions:
+    let entry_ordinal_list_ptr = offset_to_AddressOfFunctions + sizeof(uint32).uint * i
+    let entry_va_list = ctx.map_addr + entry_ordinal_list_ptr  # todo: entry_ord_l -> ordinal
+
+    if not pe_can_read(ctx, entry_va_list, sizeof(uint32).uint):
+      break  # TODO: raise exception 
+
+    let entry_va = cast[ptr uint32](entry_va_list)[]
+    let entry_name_ofs = offsets_to_Names[i]
+
+    var fname: cstring
+
+    if cast[uint](entry_name_ofs) != 0:
+      let entry_name = ctx.map_addr + cast[uint](entry_name_ofs)  # Check
+      if not pe_can_read(ctx, entry_name, 1): break
+
+      # echo "ord=" & $i &  ", va=" & $entry_va & ", name=" & $cast[cstring](entry_name)
+
+      fname = cast[cstring](entry_name)
+
+    exports.functions[i].ordinal = ordinal_base + i;
+    exports.functions[i].address = entry_va;
+    exports.functions[i].name = fname
+
+  gExports = exports
+  return addr gExports
+
 {.push dynlib: libpePath.}
 
-
+proc pe_imports*(ctx: ptr pe_ctx_t): ptr pe_imports_t {.importc, cdecl, imppeHdr.}
 proc pe_hash_recommended_size*(): uint {.importc, cdecl, imppeHdr.}  ##   Hash functions
 proc pe_hash_raw_data*(output: cstring, output_size: uint, alg_name: cstring,
                        data: ptr uint8, data_size: uint): bool {.importc,
@@ -398,8 +541,6 @@ proc pe_get_file_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_t {.importc, cdecl,
     imppeHdr.}
 proc pe_imphash*(ctx: ptr pe_ctx_t, flavor: pe_imphash_flavor_e): cstring {.
     importc, cdecl, imppeHdr.}
-proc pe_imports*(ctx: ptr pe_ctx_t): ptr pe_imports_t {.importc, cdecl, imppeHdr.}
-proc pe_exports*(ctx: ptr pe_ctx_t): ptr pe_exports_t {.importc, cdecl, imppeHdr.}
 proc pe_resources*(ctx: ptr pe_ctx_t): ptr pe_resources_t {.importc, cdecl,
     imppeHdr.}
 proc pe_calculate_entropy_file*(ctx: ptr pe_ctx_t): cdouble {.importc, cdecl,
@@ -439,48 +580,6 @@ proc pe_resource_parse_string_u*(ctx: ptr pe_ctx_t; output: cstring;
 
 
 
-iterator sections*(ctx: var pe_ctx_t): ptr IMAGE_SECTION_HEADER =
-  let peSections = pe_sections(addr ctx)
-  for i in 0..<pe_sections_count(addr ctx).Natural: 
-    yield peSections[i]
 
-iterator directories*(ctx: var pe_ctx_t): (ImageDirectoryEntry, ptr IMAGE_DATA_DIRECTORY) =
-  for i in 0..<pe_directories_count(addr ctx).Natural:
-    if ctx.pe.directories[i].Size == 0: continue
-    yield (i.ImageDirectoryEntry, ctx.pe.directories[i])
 
-proc pe_rva2section*(ctx: ptr pe_ctx_t, rva: uint64): ptr IMAGE_SECTION_HEADER =
-  if rva == 0 or ctx.pe.num_sections == 0: return   # TODO: raise an exception or sth?
-  for sect in ctx[].sections:
-    if rva >= sect.VirtualAddress and rva <= sect.VirtualAddress + sect.Misc.VirtualSize:
-      return sect
 
-proc pe_rva2ofs*(ctx: ptr pe_ctx_t, rva: uint64): uint64 =
-  if rva == 0 or ctx.pe.num_sections == 0: return 0
-  for sect in ctx[].sections:
-    var sectSize = sect.Misc.VirtualSize
-    if sectSize == 0:
-      sectSize = sect.SizeOfRawData
-    if sect.VirtualAddress <= rva:
-      if sect.VirtualAddress + sectSize > rva:
-        result = rva - sect.VirtualAddress
-        return result + sect.PointerToRawData
-  if ctx.pe.num_sections == 1:  # Handle PE with a single section
-    result = rva - ctx.pe.sections[0].VirtualAddress
-    return result + ctx.pe.sections[0].PointerToRawData
-
-proc pe_ofs2rva*(ctx: ptr pe_ctx_t, ofs: uint64): uint64 =
-  if ofs == 0 or ctx.pe.num_sections == 0: return 0
-  for sect in ctx[].sections:
-    if sect.PointerToRawData <= ofs:
-      if sect.PointerToRawData + sect.SizeOfRawData > ofs:
-        result = ofs - sect.PointerToRawData
-        return result + sect.VirtualAddress
-
-proc pe_directory_by_entry*(ctx: ptr pe_ctx_t, entry: var ImageDirectoryEntry): ptr IMAGE_DATA_DIRECTORY =
-  for dir in ctx[].directories:
-    if dir[0] == entry: return dir[1]
-
-proc pe_section_by_name*(ctx: ptr pe_ctx_t, section_name: cstring): ptr IMAGE_SECTION_HEADER =
-  for sect in ctx[].sections:
-    if sect.Name == section_name: return sect
