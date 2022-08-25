@@ -86,9 +86,8 @@ var
   peDirs: Directories
   peSects: Sections
   gExports: pe_exports_t
-  # gImports: pe_imports_t
+  gImports: pe_imports_t
 
-# proc `+`(a: pointer, b: pointer): pointer = cast[pointer](cast[int](a) + cast[int](b))
 proc `+`(a: pointer, s: Natural): pointer = cast[pointer](cast[int](a) + s)
 
 converter ptrToPtrUint(a: pointer): ptr uint = cast[ptr uint](a)
@@ -128,16 +127,14 @@ proc pe_parse*(ctx: ptr pe_ctx_t): pe_err_e =
 
   var signature_ptr: ptr uint32 = ctx.pe.dos_hdr + ctx.pe.dos_hdr.e_lfanew
 
-  # if (not pe_can_read(addr ctx, signature_ptr, LIBPE_SIZEOF_MEMBER(pe_file_t, signature))):
-  # 	return LIBPE_E_INVALID_LFANEW
+  if not pe_can_read(ctx, signature_ptr, sizeof(pe_file_t.signature).uint): return LIBPE_E_INVALID_LFANEW
 
   ctx.pe.signature = signature_ptr[]
   if ctx.pe.signature != SIGNATURE_PE and ctx.pe.signature != SIGNATURE_NE: return LIBPE_E_INVALID_SIGNATURE
 
   ctx.pe.coff_hdr = cast[ptr IMAGE_COFF_HEADER](signature_ptr + sizeof(ctx.pe.signature))
 
-  #if (!pe_can_read(ctx, ctx->pe.coff_hdr, sizeof(IMAGE_COFF_HEADER)))
-  # return LIBPE_E_MISSING_COFF_HEADER;
+  if not pe_can_read(ctx, ctx.pe.coff_hdr, sizeof(IMAGE_COFF_HEADER).uint): return LIBPE_E_MISSING_COFF_HEADER
 
   ctx.pe.num_sections = ctx.pe.coff_hdr.NumberOfSections
 
