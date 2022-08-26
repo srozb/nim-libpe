@@ -12,6 +12,7 @@ import libpe/error
 import libpe/hashes
 import libpe/resources
 import libpe/dir_resources
+import libpe/dir_import
 
 when defined(MacOsX):
   const libpePath = "/usr/local/opt/pev/lib/libpe.1.0.dylib"
@@ -34,7 +35,7 @@ const
   MAX_SECTIONS* = 96
   MAX_DLL_NAME* = 256
   MAX_FUNCTION_NAME* = 512
-  IMAGE_ORDINAL_FLAG32* = 0x80000000
+  IMAGE_ORDINAL_FLAG32* = 0x80000000'u32
   IMAGE_ORDINAL_FLAG64* = 0x8000000000000000'u64
   SIGNATURE_NE* = 0x0000454E
   SIGNATURE_PE* = 0x00004550
@@ -428,46 +429,42 @@ proc pe_ofs2rva*(ctx: ptr pe_ctx_t, ofs: uint64): uint64 =
         result = ofs - sect.PointerToRawData
         return result + sect.VirtualAddress
 
-# proc pe_imports*(ctx: ptr pe_ctx_t): ptr pe_imports_t =
-#   discard
-
 proc pe_exports*(ctx: ptr pe_ctx_t): ptr pe_exports_t =  # CHECK: ensure cache is working
   if ctx.cached_data.exports != nil: return ctx.cached_data.exports
-  var exports: pe_exports_t
-  exports.err = LIBPE_E_OK
+  gExports.err = LIBPE_E_OK
 
   let dir = pe_directory_by_entry(ctx, IMAGE_DIRECTORY_ENTRY_EXPORT)
-  if dir.isNil: return addr exports # means no exports present
+  if dir.isNil: return addr gExports # means no exports present
 
   let va = dir.VirtualAddress
-  if va == 0: return
+  if va == 0: return addr gExports
 
   var ofs = pe_rva2ofs(ctx, va)
   var exp = cast[ptr IMAGE_EXPORT_DIRECTORY](ctx.map_addr + ofs)
 
   if not pe_can_read(ctx, exp, sizeof(IMAGE_EXPORT_DIRECTORY).uint): 
-    exports.err = LIBPE_E_EXPORTS_CANT_READ_DIR
-    return
+    gExports.err = LIBPE_E_EXPORTS_CANT_READ_DIR
+    return addr gExports
 
   ofs = pe_rva2ofs(ctx, exp.Name)
   let name_ptr = ctx.map_addr + ofs
   if not pe_can_read(ctx, name_ptr, 1):
-    exports.err = LIBPE_E_EXPORTS_CANT_READ_RVA
-    return
+    gExports.err = LIBPE_E_EXPORTS_CANT_READ_RVA
+    return addr gExports
 
-  exports.name = cast[cstring](name_ptr)
+  gExports.name = cast[cstring](name_ptr)
   let ordinal_base = exp[].Base
 
   ofs = pe_rva2ofs(ctx, exp.AddressOfNames)
   let rva_ptr = ctx.map_addr + ofs
   if not pe_can_read(ctx, rva_ptr, sizeof(uint32).uint):
-    exports.err = LIBPE_E_EXPORTS_CANT_READ_RVA
-    return
+    gExports.err = LIBPE_E_EXPORTS_CANT_READ_RVA
+    return addr gExports
 
-  exports.functions_count = exp.NumberOfFunctions
+  gExports.functions_count = exp.NumberOfFunctions
 
   var expFuncs = newSeq[pe_exported_function_t](exp.NumberOfFunctions)
-  exports.functions = cast[ptr UncheckedArray[pe_exported_function_t]](addr expFuncs[0])
+  gExports.functions = cast[ptr UncheckedArray[pe_exported_function_t]](addr expFuncs[0])
   # (ordinal: 0, name: nil, fwd_name: nil, address: 0)
 
   let offset_to_AddressOfFunctions = pe_rva2ofs(ctx, exp.AddressOfFunctions)
@@ -512,20 +509,196 @@ proc pe_exports*(ctx: ptr pe_ctx_t): ptr pe_exports_t =  # CHECK: ensure cache i
       let entry_name = ctx.map_addr + cast[uint](entry_name_ofs)  # Check
       if not pe_can_read(ctx, entry_name, 1): break
 
-      # echo "ord=" & $i &  ", va=" & $entry_va & ", name=" & $cast[cstring](entry_name)
-
       fname = cast[cstring](entry_name)
 
-    exports.functions[i].ordinal = ordinal_base + i;
-    exports.functions[i].address = entry_va;
-    exports.functions[i].name = fname
+    gExports.functions[i].ordinal = ordinal_base + i;
+    gExports.functions[i].address = entry_va;
+    gExports.functions[i].name = fname
 
-  gExports = exports
+  # TODO: Cache
   return addr gExports
+
+proc get_dll_count*(ctx: ptr pe_ctx_t): uint32 =
+  let dir = pe_directory_by_entry(ctx, IMAGE_DIRECTORY_ENTRY_IMPORT)
+  if dir.isNil: return
+
+  let va = dir.VirtualAddress
+  if va == 0: return 
+
+  var ofs = pe_rva2ofs(ctx, va)
+
+  while true:
+    let id = cast[ptr IMAGE_IMPORT_DESCRIPTOR](ctx.map_addr + ofs)
+    if not pe_can_read(ctx, id, sizeof(IMAGE_IMPORT_DESCRIPTOR).uint): return
+    if id.u1.OriginalFirstThunk == 0 and id.FirstThunk == 0: break
+    ofs += sizeof(IMAGE_IMPORT_DESCRIPTOR).uint64
+
+    let aux = ofs
+    ofs = pe_rva2ofs(ctx, id.Name)
+    if ofs == 0: break
+
+    ofs = pe_rva2ofs(ctx, (if id.u1.OriginalFirstThunk != 0: id.u1.OriginalFirstThunk else: id.FirstThunk))
+    if ofs == 0: break
+
+    result.inc
+    ofs = aux
+
+proc get_functions_count*(ctx: ptr pe_ctx_t, offset: uint64): uint32 =
+  var ofs = offset
+
+  while true:
+    case ctx.pe.optional_hdr.`type`:
+    of MAGIC_PE32.uint16:
+      let thunk = cast[ptr IMAGE_THUNK_DATA32](ctx.map_addr + ofs)
+      if not pe_can_read(ctx, thunk, sizeof(IMAGE_THUNK_DATA32).uint): return
+      let thunk_type = cast[ptr uint32](thunk)[]
+      if thunk_type == 0: return
+      let is_ordinal = (thunk_type and IMAGE_ORDINAL_FLAG32.uint32) != 0
+      if not is_ordinal:
+        let imp_ofs = pe_rva2ofs(ctx, thunk.u1.AddressOfData)
+        let imp_name = cast[ptr IMAGE_IMPORT_BY_NAME](ctx.map_addr + imp_ofs)
+        if not pe_can_read(ctx, imp_name, sizeof(IMAGE_IMPORT_BY_NAME).uint): return
+      ofs += sizeof(IMAGE_THUNK_DATA32).uint
+      # break  # why is this here?
+    of MAGIC_PE64.uint16:
+      let thunk = cast[ptr IMAGE_THUNK_DATA64](ctx.map_addr + ofs)
+      if not pe_can_read(ctx, thunk, sizeof(IMAGE_THUNK_DATA64).uint): return
+      let thunk_type = cast[ptr uint64](thunk)[]
+      if thunk_type == 0: return
+      let is_ordinal = (thunk_type and IMAGE_ORDINAL_FLAG32.uint64) != 0
+      if not is_ordinal:
+        let imp_ofs = pe_rva2ofs(ctx, thunk.u1.AddressOfData)
+        let imp_name = cast[ptr IMAGE_IMPORT_BY_NAME](ctx.map_addr + imp_ofs)
+        if not pe_can_read(ctx, imp_name, sizeof(IMAGE_IMPORT_BY_NAME).uint): return
+      ofs += sizeof(IMAGE_THUNK_DATA64).uint
+      # break  # why is this here?
+    else:
+      discard  # TODO: raise exception
+    result.inc
+
+proc parse_imported_functions*(ctx: ptr pe_ctx_t, imported_dll: ptr pe_imported_dll_t, offset: uint64): pe_err_e =
+  imported_dll.err = LIBPE_E_OK
+  imported_dll.functions_count = get_functions_count(ctx, offset)  # Malloc? gImports.dlls.imported_dll.functions_count
+
+  var 
+    fname: cstring
+    is_ordinal: bool
+    ordinal: uint16
+    hint: uint16
+    ofs = offset
+    functions = newSeq[pe_imported_function_t](imported_dll.functions_count)
+
+  imported_dll.functions = cast[ptr UncheckedArray[pe_imported_function_t]](addr functions[0])
+
+  for i in 0..<imported_dll.functions_count:
+    case ctx.pe.optional_hdr.`type`:
+    of MAGIC_PE32.uint16:
+      let thunk = cast[ptr IMAGE_THUNK_DATA32](ctx.map_addr + ofs)
+      if not pe_can_read(ctx, thunk, sizeof(IMAGE_THUNK_DATA32).uint):
+        imported_dll.err = LIBPE_E_INVALID_THUNK
+        return imported_dll.err
+      let thunk_type = cast[ptr uint32](thunk)[]
+      if thunk_type == 0: 
+        imported_dll.err = LIBPE_E_INVALID_THUNK
+        return LIBPE_E_INVALID_THUNK
+      is_ordinal = (thunk_type and IMAGE_ORDINAL_FLAG32.uint) != 0
+      if is_ordinal: 
+        hint = 0
+        ordinal = ((thunk.u1.Ordinal and not IMAGE_ORDINAL_FLAG32) and 0xffff).uint16
+      else:
+        let imp_ofs = pe_rva2ofs(ctx, thunk.u1.AddressOfData)
+        let imp_name = cast[ptr IMAGE_IMPORT_BY_NAME](ctx.map_addr + imp_ofs)
+        if not pe_can_read(ctx, imp_name, sizeof(IMAGE_IMPORT_BY_NAME).uint):
+          imported_dll.err = LIBPE_E_ALLOCATION_FAILURE
+          return imported_dll.err
+        hint = imp_name.Hint
+        ordinal = 0
+        fname = imp_name.Name
+      ofs += sizeof(IMAGE_THUNK_DATA32).uint
+      # break
+    of MAGIC_PE64.uint16:
+      let thunk = cast[ptr IMAGE_THUNK_DATA64](ctx.map_addr + ofs)
+      if not pe_can_read(ctx, thunk, sizeof(IMAGE_THUNK_DATA64).uint):
+        imported_dll.err = LIBPE_E_INVALID_THUNK
+        return imported_dll.err
+      let thunk_type = cast[ptr uint64](thunk)[]
+      if thunk_type == 0: 
+        imported_dll.err = LIBPE_E_INVALID_THUNK
+        return LIBPE_E_INVALID_THUNK
+      is_ordinal = (thunk_type and IMAGE_ORDINAL_FLAG64.uint) != 0
+      if is_ordinal: 
+        hint = 0
+        ordinal = ((thunk.u1.Ordinal and not IMAGE_ORDINAL_FLAG64) and 0xffff).uint16
+      else:
+        let imp_ofs = pe_rva2ofs(ctx, thunk.u1.AddressOfData)
+        let imp_name = cast[ptr IMAGE_IMPORT_BY_NAME](ctx.map_addr + imp_ofs)
+        if not pe_can_read(ctx, imp_name, sizeof(IMAGE_IMPORT_BY_NAME).uint):
+          imported_dll.err = LIBPE_E_ALLOCATION_FAILURE
+          return imported_dll.err
+        hint = imp_name.Hint
+        ordinal = 0
+        fname = imp_name.Name
+      ofs += sizeof(IMAGE_THUNK_DATA64).uint
+      # break
+    else:
+      discard  # TODO: raise exception
+
+    imported_dll.functions[i].hint = hint
+    imported_dll.functions[i].ordinal = ordinal
+
+    if not is_ordinal: imported_dll.functions[i].name = fname
+    else: imported_dll.functions[i].name = ""  # so the name is never nil
+
+proc pe_imports*(ctx: ptr pe_ctx_t): ptr pe_imports_t =
+  if ctx.cached_data.imports != nil: return ctx.cached_data.imports
+  gImports.err = LIBPE_E_OK
+
+  gImports.dll_count = get_dll_count(ctx)
+  if gImports.dll_count == 0: return addr gImports
+
+  var gImportedDlls = newSeq[pe_imported_dll_t](gImports.dll_count)
+  gImports.dlls = cast[ptr UncheckedArray[pe_imported_dll_t]](addr gImportedDlls[0])
+
+  let dir = pe_directory_by_entry(ctx, IMAGE_DIRECTORY_ENTRY_IMPORT)
+  if dir.isNil: return addr gImports # means no exports present
+
+  let va = dir.VirtualAddress
+  if va == 0: return addr gImports
+
+  var ofs = pe_rva2ofs(ctx, va)
+
+  for i in 0..<gImports.dll_count:
+    let id = cast[ptr IMAGE_IMPORT_DESCRIPTOR](ctx.map_addr + ofs)
+    if not pe_can_read(ctx, id, sizeof(IMAGE_IMPORT_DESCRIPTOR).uint): break
+
+    if id.u1.OriginalFirstThunk == 0 and id.FirstThunk == 0: break
+    ofs += sizeof(IMAGE_IMPORT_DESCRIPTOR).uint
+    let aux = ofs
+
+    ofs = pe_rva2ofs(ctx, id.Name)
+    if ofs == 0: break
+    
+    let dll_name_ptr = ctx.map_addr + ofs
+    if not pe_can_read(ctx, dll_name_ptr, 1): break
+
+    gImportedDlls[i].name = cast[cstring](dll_name_ptr)
+    
+    ofs = pe_rva2ofs(ctx, (if id.u1.OriginalFirstThunk != 0: id.u1.OriginalFirstThunk else: id.FirstThunk))
+
+    if ofs == 0: break
+
+    let parse_err = parse_imported_functions(ctx, addr gImportedDlls[i], ofs)
+    if not parse_err == LIBPE_E_OK:
+      gImports.err = parse_err
+      return addr gImports
+
+    ofs = aux
+
+  return addr gImports
+  
 
 {.push dynlib: libpePath.}
 
-proc pe_imports*(ctx: ptr pe_ctx_t): ptr pe_imports_t {.importc, cdecl, imppeHdr.}
 proc pe_hash_recommended_size*(): uint {.importc, cdecl, imppeHdr.}  ##   Hash functions
 proc pe_hash_raw_data*(output: cstring, output_size: uint, alg_name: cstring,
                        data: ptr uint8, data_size: uint): bool {.importc,

@@ -66,6 +66,9 @@ suite "Testing PE32+ exe":
   test "pe_section_characteristic_name":
     check $pe_section_characteristic_name(IMAGE_SCN_GPREL) == "IMAGE_SCN_GPREL"
 
+  test "get_dll_count func":
+    check get_dll_count(addr ctx) == 34
+
   test "PE Headers":
     var dosHeader = pe_dos(addr ctx)
     check dosHeader.e_magic == 0x5a4d
@@ -165,6 +168,9 @@ suite "Testing PE32 dll":
 
   test "PE Sections":
     check pe_sections_count(addr ctx) == 5
+
+  test "get_dll_count func":
+    check get_dll_count(addr ctx) == 3
 
   test "PE Imports":
     let imports = pe_imports(addr ctx)
