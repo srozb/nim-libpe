@@ -1,5 +1,10 @@
 import std/memFiles
 
+## For entropy
+import tables
+import math
+##
+
 import libpe/def_enums
 import libpe/hdr_dos
 import libpe/hdr_coff
@@ -695,7 +700,15 @@ proc pe_imports*(ctx: ptr pe_ctx_t): ptr pe_imports_t =
     ofs = aux
 
   return addr gImports
+  # TODO: Cache
   
+proc pe_calculate_entropy_file*(ctx: ptr pe_ctx_t): cdouble =
+  let filesize = pe_filesize(ctx)
+  var t = initCountTable[char]()
+  for i in 0..<filesize:
+    t.inc(cast[ptr char](ctx.map_addr + i)[])
+  for x in t.values: result -= x/filesize.int * log2(x/filesize.int)
+
 
 {.push dynlib: libpePath.}
 
@@ -711,9 +724,8 @@ proc pe_get_file_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_t {.importc, cdecl,
     imppeHdr.}
 proc pe_imphash*(ctx: ptr pe_ctx_t, flavor: pe_imphash_flavor_e): cstring {.
     importc, cdecl, imppeHdr.}
+
 proc pe_resources*(ctx: ptr pe_ctx_t): ptr pe_resources_t {.importc, cdecl,
-    imppeHdr.}
-proc pe_calculate_entropy_file*(ctx: ptr pe_ctx_t): cdouble {.importc, cdecl,
     imppeHdr.}
 proc pe_fpu_trick*(ctx: ptr pe_ctx_t): bool {.importc, cdecl, imppeHdr.}
 proc pe_get_cpl_analysis*(ctx: ptr pe_ctx_t): cint {.importc, cdecl, imppeHdr.}
