@@ -17,9 +17,6 @@ const
   LIBPE_RDT_DATA_ENTRY* = (4).pe_resource_node_type_e
 
 type
-  pe_ctx* {.incompleteStruct, impresourcesHdr, importc: "struct pe_ctx".} = object
-  
-  pe_ctx_t* {.importc, impresourcesHdr.} = pe_ctx
   Union_resourcesh1* {.union, bycopy, impresourcesHdr,
                        importc: "union Union_resourcesh1".} = object
     raw_ptr*: pointer  ##   We are allowed to rely on type-punning in C99, but not in C++.

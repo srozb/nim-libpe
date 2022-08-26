@@ -59,3 +59,5 @@ type
     NumberOfRelocations*: uint16
     NumberOfLinenumbers*: uint16           
     Characteristics*: uint32 ##   SectionCharacteristics
+
+

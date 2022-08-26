@@ -1,8 +1,8 @@
 import unittest
 
 import libpe
+import libpe/pe
 import libpe/error
-
 import libpe/imports
 import libpe/exports
 import libpe/hashes
