@@ -11,6 +11,7 @@ import libpe/hdr_coff
 import libpe/hdr_optional
 import libpe/sections
 import libpe/directories
+import libpe/resources
 
 suite "Testing PE32+ exe":
   var ctx: pe_ctx_t
@@ -119,7 +120,16 @@ suite "Testing PE32+ exe":
 
   test "pe_hash_recommended_size":
     check pe_hash_recommended_size() == 148
-    
+
+  test "PE Resources":
+    let res = pe_resources(addr ctx)
+    check res.root_node.`type` == LIBPE_RDT_DIRECTORY_ENTRY
+    check ctx.cached_data.resources.err == LIBPE_E_OK
+    check res.root_node.childNode.`type` == LIBPE_RDT_DIRECTORY_ENTRY
+    check res.root_node.childNode.childNode.dirLevel == 3
+    check res.root_node.childNode.dirLevel == 2 
+    check res.root_node.dirLevel == 1
+        
   test "PE Hashing":
     let hSize = pe_hash_recommended_size()
     let sectHashes = pe_get_sections_hash(addr ctx)

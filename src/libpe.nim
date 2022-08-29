@@ -39,6 +39,8 @@ var
   peSects: Sections
   gExports: pe_exports_t
   gImports: pe_imports_t
+  gCachedData: pe_cached_data_t
+  gResNodes: seq[pe_resource_node_t]
 
 proc `+`(a: pointer, s: Natural): pointer = cast[pointer](cast[int](a) + s)
 
@@ -74,6 +76,7 @@ proc pe_unload*(ctx: ptr pe_ctx_t): pe_err_e =
 
 proc pe_parse*(ctx: ptr pe_ctx_t): pe_err_e =
   result = LIBPE_E_OK
+  ctx.cached_data = gCachedData
   ctx.pe.dos_hdr = cast[ptr IMAGE_DOS_HEADER](ctx.map_addr)
   if ctx.pe.dos_hdr.e_magic != MAGIC_MZ: return LIBPE_E_NOT_A_PE_FILE
 
@@ -656,12 +659,14 @@ proc pe_calculate_entropy_file*(ctx: ptr pe_ctx_t): cdouble =
     t.inc(cast[ptr char](ctx.map_addr + i)[])
   for x in t.values: result -= x/filesize.int * log2(x/filesize.int)
 
+proc pe_hash_recommended_size*(): uint = 148.uint
+
 
 {.push dynlib: libpePath.}
 
 
   # Hash
-proc pe_hash_recommended_size*(): uint {.importc, cdecl, imppeHdr.}  ##   Hash functions
+# proc pe_hash_recommended_size*(): uint {.importc, cdecl, imppeHdr.}
 proc pe_hash_raw_data*(output: cstring, output_size: uint, alg_name: cstring,
                        data: ptr uint8, data_size: uint): bool {.importc,
     cdecl, imppeHdr.}
@@ -683,20 +688,16 @@ proc pe_error_msg*(error: pe_err_e): cstring {.importc, cdecl, impError.}
 proc pe_error_print*(stream: File; error: pe_err_e) {.importc, impError.}
 
   # Resources
-proc pe_resources*(ctx: ptr pe_ctx_t): ptr pe_resources_t {.importc, cdecl,
-    imppeHdr.}
 proc pe_resource_entry_info_lookup*(name_offset: uint32): ptr pe_resource_entry_info_t {.
     importc, cdecl, impresourcesHdr.}
 proc pe_resource_search_nodes*(result: ptr pe_resource_node_search_result_t;
                                node: ptr pe_resource_node_t;
                                predicate: pe_resource_node_predicate_fn) {.
     importc, cdecl, impresourcesHdr.}
-proc pe_resources_dealloc_node_search_result*(
-    result: ptr pe_resource_node_search_result_t) {.importc, cdecl,
-    impresourcesHdr.}
+# proc pe_resources_dealloc_node_search_result*(
+#     result: ptr pe_resource_node_search_result_t) {.importc, cdecl,
+#     impresourcesHdr.}
 proc pe_resource_root_node*(node: ptr pe_resource_node_t): ptr pe_resource_node_t {.
-    importc, cdecl, impresourcesHdr.}
-proc pe_resource_last_child_node*(parent_node: ptr pe_resource_node_t): ptr pe_resource_node_t {.
     importc, cdecl, impresourcesHdr.}
 proc pe_resource_find_node_by_type_and_level*(node: ptr pe_resource_node_t;
     `type`: pe_resource_node_type_e; dirLevel: uint32): ptr pe_resource_node_t {.
@@ -704,12 +705,138 @@ proc pe_resource_find_node_by_type_and_level*(node: ptr pe_resource_node_t;
 proc pe_resource_find_parent_node_by_type_and_level*(
     node: ptr pe_resource_node_t; `type`: pe_resource_node_type_e;
     dirLevel: uint32): ptr pe_resource_node_t {.importc, cdecl, impresourcesHdr.}
-proc pe_resource_parse_string_u*(ctx: ptr pe_ctx_t; output: cstring;
-                                 output_size: uint; data_string_ptr: ptr IMAGE_RESOURCE_DATA_STRING_U): cstring {.
-    importc, cdecl, impresourcesHdr.}
 
 {.pop.}
 
+proc pe_resource_last_child_node*(parent_node: ptr pe_resource_node_t): ptr pe_resource_node_t =
+  if parent_node.isNil: return
+
+  var child = parent_node.childNode
+  while not child.isNil:
+    if not child.isNil:
+      return child
+    child = child.nextNode
+
+proc pe_resource_base_ptr(ctx: ptr pe_ctx_t): ptr IMAGE_RESOURCE_DIRECTORY = # or returns just `pointer`
+  let directory = pe_directory_by_entry(ctx, IMAGE_DIRECTORY_ENTRY_RESOURCE)
+  if directory.isNil: return  # "Resource directory does not exist"
+  if directory.VirtualAddress == 0 or directory.Size == 0: return  # "Resource directory VA is zero"
+
+  let offset = pe_rva2ofs(ctx, directory.VirtualAddress)
+  result = cast[ptr IMAGE_RESOURCE_DIRECTORY](ctx.map_addr + offset)
+  if not pe_can_read(ctx, result, sizeof(IMAGE_RESOURCE_DIRECTORY).uint): return  # Cannot read IMAGE_RESOURCE_DIRECTORY
+
+proc pe_resource_create_node(depth: uint8, `type`: pe_resource_node_type_e, raw_ptr: pointer, parent_node: ptr pe_resource_node_t): ptr pe_resource_node_t =
+  var node: pe_resource_node_t
+  let nIdx = gResNodes.len
+  gResNodes.add(node)
+  gResNodes[nIdx].depth = depth
+  gResNodes[nIdx].`type` = `type`
+
+  if not parent_node.isNil:
+    gResNodes[nIdx].dirLevel = (if parent_node.`type` == LIBPE_RDT_RESOURCE_DIRECTORY: parent_node.dirLevel + 1 else: parent_node.dirLevel)
+  else: 
+    # echo $nIdx & ": Creating root node: " & (addr gResNodes[nIdx]).repr
+    gResNodes[nIdx].dirLevel = 0
+
+  if not parent_node.isNil:
+    # echo $nIdx & ": Creating normal node " & (addr gResNodes[nIdx]).repr & " PARENT: " & parent_node.repr
+    gResNodes[nIdx].parentNode = parent_node
+    if parent_node.childNode.isNil: parent_node.childNode = addr gResNodes[nIdx]
+    else:
+      var last_child_node {.global.} : pe_resource_node_t
+      last_child_node = pe_resource_last_child_node(parent_node)[]
+      #echo "LCN: " & (addr last_child_node).repr
+      if not (addr last_child_node).isNil: last_child_node.nextNode = addr gResNodes[nIdx]
+
+  gResNodes[nIdx].raw.raw_ptr = raw_ptr
+
+  case `type`:
+  of LIBPE_RDT_RESOURCE_DIRECTORY: gResNodes[nIdx].raw.resourceDirectory = cast[ptr IMAGE_RESOURCE_DIRECTORY](raw_ptr)
+  of LIBPE_RDT_DIRECTORY_ENTRY: gResNodes[nIdx].raw.directoryEntry = cast[ptr IMAGE_RESOURCE_DIRECTORY_ENTRY](raw_ptr)
+  of LIBPE_RDT_DATA_STRING: gResNodes[nIdx].raw.dataString = cast[ptr IMAGE_RESOURCE_DATA_STRING_U](raw_ptr)
+  of LIBPE_RDT_DATA_ENTRY: gResNodes[nIdx].raw.dataEntry = cast[ptr IMAGE_RESOURCE_DATA_ENTRY](raw_ptr)
+  else: discard  # Invalid Node Type
+
+  result = addr gResNodes[nIdx]
+
+proc pe_resource_parse_string_u*(ctx: ptr pe_ctx_t, output: typeof(nil), output_size: uint, data_string_ptr: ptr IMAGE_RESOURCE_DATA_STRING_U): cstring =
+  if data_string_ptr.isNil: return
+  if not pe_can_read(ctx, addr data_string_ptr.String, data_string_ptr.Length): return  # Cannot read string from IMAGE_RESOURCE_DATA_STRING_U
+  var nStr = $cast[WideCString](data_string_ptr)
+  nStr.setLen(data_string_ptr.Length + 1)
+  result = cstring(nStr)
+
+proc pe_resource_parse_string_u*(ctx: ptr pe_ctx_t, output: var cstring, output_size: uint, data_string_ptr: ptr IMAGE_RESOURCE_DATA_STRING_U): cstring =
+  if data_string_ptr.isNil: return
+  if not pe_can_read(ctx, addr data_string_ptr.String, data_string_ptr.Length): return  # Cannot read string from IMAGE_RESOURCE_DATA_STRING_U
+  let buffer_size = (if output_size == 0: data_string_ptr.Length + 1 else: output_size.uint16)
+  var nStr = $cast[WideCString](data_string_ptr)
+  nStr.setLen(buffer_size)
+  output = cstring(nStr)
+  return output
+
+proc pe_resource_parse_nodes(ctx: ptr pe_ctx_t, node: ptr pe_resource_node_t): bool =
+  result = true
+  let nIdx = gResNodes.len-1
+  case node.`type`:
+  of LIBPE_RDT_RESOURCE_DIRECTORY:
+    let resdir_ptr = node.raw.resourceDirectory
+    let total_entries = resdir_ptr.NumberOfIdEntries + resdir_ptr.NumberOfNamedEntries
+    var first_entry_ptr = resdir_ptr + sizeof(IMAGE_RESOURCE_DIRECTORY).uint
+    for i in 0..<total_entries.int:
+      let entry = cast[ptr IMAGE_RESOURCE_DIRECTORY_ENTRY](first_entry_ptr + i.uint * sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY).uint)
+      if not pe_can_read(ctx, entry, sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY).uint):
+        discard "Cannot read IMAGE_RESOURCE_DIRECTORY_ENTRY"
+      gResNodes[nIdx] = pe_resource_create_node((node.depth + 1).uint8, LIBPE_RDT_DIRECTORY_ENTRY, entry, node)[]
+      discard pe_resource_parse_nodes(ctx, addr gResNodes[nIdx])
+  of LIBPE_RDT_DIRECTORY_ENTRY:
+    let entry_ptr = node.raw.directoryEntry
+    if entry_ptr.isNil: return false
+    if entry_ptr.u0.data.NameIsString != 0.uint:
+      var data_string_ptr = ctx.cached_data.resources.resource_base_ptr + entry_ptr.u0.data.NameOffset
+      if not pe_can_read(ctx, data_string_ptr, sizeof(IMAGE_RESOURCE_DATA_STRING_U).uint): return  # Cannot read IMAGE_RESOURCE_DATA_STRING_U
+      node.name = pe_resource_parse_string_u(ctx, nil, 0, cast[ptr IMAGE_RESOURCE_DATA_STRING_U](data_string_ptr))
+      gResNodes[nIdx] = pe_resource_create_node((node.depth + 1).uint8, LIBPE_RDT_DATA_STRING, data_string_ptr, node)[]
+      discard pe_resource_parse_nodes(ctx, addr gResNodes[nIdx])
+    if entry_ptr.u1.data.DataIsDirectory != 0.uint:
+      var child_resdir_ptr = cast[ptr IMAGE_RESOURCE_DIRECTORY](ctx.cached_data.resources.resource_base_ptr + entry_ptr.u1.data.OffsetToDirectory)
+      if not pe_can_read(ctx, child_resdir_ptr, sizeof(IMAGE_RESOURCE_DIRECTORY).uint): discard "Cannot read IMAGE_RESOURCE_DIRECTORY"
+      gResNodes[nIdx] = pe_resource_create_node((node.depth + 1).uint8, LIBPE_RDT_RESOURCE_DIRECTORY, child_resdir_ptr, node)[]
+    else:
+      var data_resdir_ptr = cast[ptr IMAGE_RESOURCE_DIRECTORY](ctx.cached_data.resources.resource_base_ptr + entry_ptr.u1.data.OffsetToDirectory)
+      if not pe_can_read(ctx, data_resdir_ptr, sizeof(IMAGE_RESOURCE_DATA_ENTRY).uint): discard "Cannot read IMAGE_RESOURCE_DIRECTORY"
+      gResNodes[nIdx] = pe_resource_create_node((node.depth + 1).uint8, LIBPE_RDT_DATA_ENTRY, data_resdir_ptr, node)[]
+    discard pe_resource_parse_nodes(ctx, addr gResNodes[nIdx])
+  of LIBPE_RDT_DATA_STRING:
+    let data_string_ptr = node.raw.dataString
+    if not pe_can_read(ctx, data_string_ptr, sizeof(IMAGE_RESOURCE_DATA_STRING_U).uint): discard "Cannot read IMAGE_RESOURCE_DATA_STRING_U"
+    # var buffer = pe_resource_parse_string_u(ctx, nil, 0, data_string_ptr)  # only for debugging purposes
+  of LIBPE_RDT_DATA_ENTRY:
+    discard "Not Implemented"
+  else:
+    return false  # Invalid node type
+
+
+proc pe_resource_parse(ctx: ptr pe_ctx_t, resource_base_ptr: ptr IMAGE_RESOURCE_DIRECTORY): ptr pe_resource_node_t =
+  discard pe_resource_create_node(0.uint8, LIBPE_RDT_RESOURCE_DIRECTORY, resource_base_ptr, cast [ptr pe_resource_node_t](nil))[]
+  discard pe_resource_parse_nodes(ctx, addr gResNodes[0])
+  return addr gResNodes[0]
+
+proc pe_resources*(ctx: ptr pe_ctx_t): ptr pe_resources_t =
+  if not ctx.cached_data.resources.isNil: return ctx.cached_data.resources
+
+  var res_ptr {.global.} : pe_resources_t
+
+  ctx.cached_data.resources = addr res_ptr
+  ctx.cached_data.resources.err = LIBPE_E_OK
+
+  ctx.cached_data.resources.resource_base_ptr = pe_resource_base_ptr(ctx)
+  if not ctx.cached_data.resources.resource_base_ptr.isNil:
+    ctx.cached_data.resources.root_node = pe_resource_parse(ctx, cast[ptr IMAGE_RESOURCE_DIRECTORY](ctx.cached_data.resources.resource_base_ptr))  # why is this cast needed here?
+
+  result = ctx.cached_data.resources
+  
 
 
 
