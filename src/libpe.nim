@@ -666,7 +666,6 @@ proc pe_hash_recommended_size*(): uint = 148.uint
 
 
   # Hash
-# proc pe_hash_recommended_size*(): uint {.importc, cdecl, imppeHdr.}
 proc pe_hash_raw_data*(output: cstring, output_size: uint, alg_name: cstring,
                        data: ptr uint8, data_size: uint): bool {.importc,
     cdecl, imppeHdr.}
@@ -679,15 +678,119 @@ proc pe_get_file_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_t {.importc, cdecl,
 proc pe_imphash*(ctx: ptr pe_ctx_t, flavor: pe_imphash_flavor_e): cstring {.
     importc, cdecl, imppeHdr.}
 
-  # Misc
-proc pe_fpu_trick*(ctx: ptr pe_ctx_t): bool {.importc, cdecl, imppeHdr.}
-proc pe_get_cpl_analysis*(ctx: ptr pe_ctx_t): cint {.importc, cdecl, imppeHdr.}
-proc pe_has_fake_entrypoint*(ctx: ptr pe_ctx_t): cint {.importc, cdecl, imppeHdr.}
-proc pe_get_tls_callback*(ctx: ptr pe_ctx_t): cint {.importc, cdecl, imppeHdr.}
-proc pe_error_msg*(error: pe_err_e): cstring {.importc, cdecl, impError.}
-proc pe_error_print*(stream: File; error: pe_err_e) {.importc, impError.}
-
 {.pop.}
+
+# Error
+proc pe_error_msg*(error: pe_err_e): cstring =
+  const errors = @[
+    "no error",                 ## LIBPE_E_OK,
+    "no functions found",       ##LIBPE_E_NO_FUNCIONS_FOUND
+    "no callbacks found",       ##LIBPE_E_NO_CALLBACKS_FOUND
+     "error calculating hash",  ## LIBPE_E_HASHING_FAILED
+    "number of functions not equal to number of names", ##LIBPE_E_EXPORTS_FUNC_NEQ_NAMES
+    "cannot read exports directory", ## LIBPE_E_EXPORTS_CANT_READ_DIR
+    "cannot read relative virtual address", ##LIBPE_E_EXPORTS_CANT_READ_RVA
+    "type punning failed",      ## LIBPE_E_TYPE_PUNNING_FAILED
+    "too many sections",        ## LIBPE_E_TOO_MANY_SECTIONS,
+    "too many directories",     ## LIBPE_E_TOO_MANY_DIRECTORIES,
+    "close() failed",           ## LIBPE_E_CLOSE_FAILED,
+    "munmap() failed",          ## LIBPE_E_MUNMAP_FAILED,
+    "mmap() failed",            ## LIBPE_E_MMAP_FAILED,
+    "unsupported image format", ## LIBPE_E_UNSUPPORTED_IMAGE,
+    "invalid signature",        ## LIBPE_E_INVALID_SIGNATURE,
+    "missing OPTIONAL header",  ## LIBPE_E_MISSING_OPTIONAL_HEADER,
+    "missing COFF header",      ## LIBPE_E_MISSING_COFF_HEADER,
+    "invalid e_lfanew",         ## LIBPE_E_INVALID_LFANEW,
+    "not a PE file",            ## LIBPE_E_NOT_A_PE_FILE,
+    "not a regular file",       ## LIBPE_E_NOT_A_FILE,
+    "fstat() failed",           ## LIBPE_E_FSTAT_FAILED,
+    "fdopen() failed",          ## LIBPE_E_FDOPEN_FAILED,
+    "open() failed",            ## LIBPE_E_OPEN_FAILED,
+    "allocation failure"]       ## LIBPE_E_ALLOCATION_FAILURE,
+
+  return errors[error.int.abs].cstring
+
+proc pe_error_print*(stream: File, error: pe_err_e) =
+  stream.write(error.pe_error_msg)
+
+# Misc
+proc pe_fpu_trick*(ctx: ptr pe_ctx_t): bool =
+  ## Not implemented - I doubt if this is relevant. To be implemented using yara.
+  ## Left for compatibility
+  return false
+
+proc cpl_analysis*(ctx: ptr pe_ctx_t): cint =
+  result = 0
+  let
+    hdr_coff_ptr = pe_coff(ctx)
+    hdr_dos_ptr = pe_dos(ctx)
+  if hdr_coff_ptr.isNil or hdr_dos_ptr.isNil: return 0
+
+  let 
+    characteristics1 = (
+      IMAGE_FILE_EXECUTABLE_IMAGE or
+      IMAGE_FILE_LINE_NUMS_STRIPPED or
+      IMAGE_FILE_LOCAL_SYMS_STRIPPED or
+      IMAGE_FILE_BYTES_REVERSED_LO or
+      IMAGE_FILE_32BIT_MACHINE or
+      IMAGE_FILE_DLL or
+      IMAGE_FILE_BYTES_REVERSED_HI
+    ).uint16
+    characteristics2 = ( 
+      IMAGE_FILE_EXECUTABLE_IMAGE or
+      IMAGE_FILE_LINE_NUMS_STRIPPED or
+      IMAGE_FILE_LOCAL_SYMS_STRIPPED or
+      IMAGE_FILE_BYTES_REVERSED_LO or
+      IMAGE_FILE_32BIT_MACHINE or 
+      IMAGE_FILE_DEBUG_STRIPPED or
+      IMAGE_FILE_DLL or
+      IMAGE_FILE_BYTES_REVERSED_HI
+    ).uint16
+    characteristics3 = (
+      IMAGE_FILE_EXECUTABLE_IMAGE or
+      IMAGE_FILE_LINE_NUMS_STRIPPED or
+      IMAGE_FILE_32BIT_MACHINE or
+      IMAGE_FILE_DEBUG_STRIPPED or
+      IMAGE_FILE_DLL
+    ).uint16
+  if  (
+        hdr_coff_ptr.TimeDateStamp == 708992537 or 
+        hdr_coff_ptr.TimeDateStamp > 1354555867
+      ) and (
+        hdr_coff_ptr.Characteristics == characteristics1 or
+        hdr_coff_ptr.Characteristics == characteristics2 or
+        hdr_coff_ptr.Characteristics == characteristics3
+      ) and hdr_dos_ptr.e_sp == 0xb8: return 1
+
+proc pe_get_cpl_analysis*(ctx: ptr pe_ctx_t): cint =
+  return (if pe_is_dll(ctx): cpl_analysis(ctx) else: -1)
+
+proc pe_check_fake_entrypoint*(ctx: ptr pe_ctx_t, ep: uint32): ptr IMAGE_SECTION_HEADER =
+  let num_sections = pe_sections_count(ctx)
+  if num_sections == 0: return
+
+  result = pe_rva2section(ctx, ep)
+
+  if bool(result.Characteristics and IMAGE_SCN_CNT_CODE.uint32): return cast[ptr IMAGE_SECTION_HEADER](0)
+
+proc pe_has_fake_entrypoint*(ctx: ptr pe_ctx_t): cint =
+  result = 0
+  let optional = pe_optional(ctx)
+  if optional.isNil: return -1
+
+  let ep = ( if not optional.h_32.isNil: optional.h_32.AddressOfEntryPoint 
+    else: (
+        if not optional.h_64.isNil: optional.h_64.AddressOfEntryPoint else: 0.uint32
+      )
+  )
+  if ep == 0: return -2
+  if not pe_check_fake_entrypoint(ctx, ep).isNil: return 1  # fake
+
+proc pe_get_tls_callback*(ctx: ptr pe_ctx_t): cint =
+  ## Not implemented: misc.c:162
+  result = LIBPE_E_NO_FUNCTIONS_FOUND.cint
+
+# Resources
 
 proc pe_resource_find_parent_node_by_type_and_level*(
   node: ptr pe_resource_node_t; `type`: pe_resource_node_type_e;
