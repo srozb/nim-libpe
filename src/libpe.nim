@@ -687,26 +687,51 @@ proc pe_get_tls_callback*(ctx: ptr pe_ctx_t): cint {.importc, cdecl, imppeHdr.}
 proc pe_error_msg*(error: pe_err_e): cstring {.importc, cdecl, impError.}
 proc pe_error_print*(stream: File; error: pe_err_e) {.importc, impError.}
 
-  # Resources
-proc pe_resource_entry_info_lookup*(name_offset: uint32): ptr pe_resource_entry_info_t {.
-    importc, cdecl, impresourcesHdr.}
-proc pe_resource_search_nodes*(result: ptr pe_resource_node_search_result_t;
-                               node: ptr pe_resource_node_t;
-                               predicate: pe_resource_node_predicate_fn) {.
-    importc, cdecl, impresourcesHdr.}
-# proc pe_resources_dealloc_node_search_result*(
-#     result: ptr pe_resource_node_search_result_t) {.importc, cdecl,
-#     impresourcesHdr.}
-proc pe_resource_root_node*(node: ptr pe_resource_node_t): ptr pe_resource_node_t {.
-    importc, cdecl, impresourcesHdr.}
-proc pe_resource_find_node_by_type_and_level*(node: ptr pe_resource_node_t;
-    `type`: pe_resource_node_type_e; dirLevel: uint32): ptr pe_resource_node_t {.
-    importc, cdecl, impresourcesHdr.}
-proc pe_resource_find_parent_node_by_type_and_level*(
-    node: ptr pe_resource_node_t; `type`: pe_resource_node_type_e;
-    dirLevel: uint32): ptr pe_resource_node_t {.importc, cdecl, impresourcesHdr.}
-
 {.pop.}
+
+proc pe_resource_find_parent_node_by_type_and_level*(
+  node: ptr pe_resource_node_t; `type`: pe_resource_node_type_e;
+  dirLevel: uint32): ptr pe_resource_node_t =
+  if node.isNil: return
+  var parent = node.parentNode
+  while not parent.isNil:
+    if parent.`type` == `type` and parent.dirLevel == dirLevel: return parent
+    parent = parent.parentNode
+
+proc pe_resource_root_node*(node: ptr pe_resource_node_t): ptr pe_resource_node_t =
+  ## TODO: make tests
+  if node.isNil: return
+  var parent = node.parentNode
+  result = parent.parentNode
+  while not parent.isNil:
+    if parent.parentNode.isNil: return parent
+    parent = parent.parentNode
+
+proc pe_resource_find_node_by_type_and_level*(node: ptr pe_resource_node_t;
+    `type`: pe_resource_node_type_e; dirLevel: uint32): ptr pe_resource_node_t =
+  ## Unimplemented
+  result = node
+
+proc pe_resource_search_nodes*(res: ptr pe_resource_node_search_result_t;
+                               node: ptr pe_resource_node_t;
+                               predicate: pe_resource_node_predicate_fn) =
+  ## Unimplemented
+  if node.isNil: return
+
+  if predicate(node):
+    var item {.global.} : pe_resource_node_search_result_item_t
+    if item.node == node:
+      # res.items[].add(item)  # TODO: append item to some kind of container
+      res.count.inc
+
+  pe_resource_search_nodes(res, node.childNode, predicate)
+  pe_resource_search_nodes(res, node.nextNode, predicate)
+
+proc pe_resource_entry_info_lookup*(name_offset: uint32): ptr pe_resource_entry_info_t =
+  for entInfo in g_resource_dataentry_info_table:
+    if entInfo.`type`.uint == name_offset:
+      var found {.global.} = entInfo  # instead returning unsafeAddr to const
+      return addr found
 
 proc pe_resource_last_child_node*(parent_node: ptr pe_resource_node_t): ptr pe_resource_node_t =
   if parent_node.isNil: return
@@ -736,17 +761,14 @@ proc pe_resource_create_node(depth: uint8, `type`: pe_resource_node_type_e, raw_
   if not parent_node.isNil:
     gResNodes[nIdx].dirLevel = (if parent_node.`type` == LIBPE_RDT_RESOURCE_DIRECTORY: parent_node.dirLevel + 1 else: parent_node.dirLevel)
   else: 
-    # echo $nIdx & ": Creating root node: " & (addr gResNodes[nIdx]).repr
     gResNodes[nIdx].dirLevel = 0
 
   if not parent_node.isNil:
-    # echo $nIdx & ": Creating normal node " & (addr gResNodes[nIdx]).repr & " PARENT: " & parent_node.repr
     gResNodes[nIdx].parentNode = parent_node
     if parent_node.childNode.isNil: parent_node.childNode = addr gResNodes[nIdx]
     else:
       var last_child_node {.global.} : pe_resource_node_t
       last_child_node = pe_resource_last_child_node(parent_node)[]
-      #echo "LCN: " & (addr last_child_node).repr
       if not (addr last_child_node).isNil: last_child_node.nextNode = addr gResNodes[nIdx]
 
   gResNodes[nIdx].raw.raw_ptr = raw_ptr
