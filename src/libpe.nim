@@ -38,6 +38,7 @@ var
   peDirs: Directories
   peSects: Sections
   gExports: pe_exports_t
+  gExportedFuncs: seq[pe_exported_function_t]
   gImports: pe_imports_t
   gImportedDlls: seq[pe_imported_dll_t]
   gImportedFunctions: seq[seq[pe_imported_function_t]]
@@ -420,9 +421,8 @@ proc pe_exports*(ctx: ptr pe_ctx_t): ptr pe_exports_t =  # CHECK: ensure cache i
 
   gExports.functions_count = exp.NumberOfFunctions
 
-  var expFuncs = newSeq[pe_exported_function_t](exp.NumberOfFunctions)
-  gExports.functions = cast[ptr UncheckedArray[pe_exported_function_t]](addr expFuncs[0])
-  # (ordinal: 0, name: nil, fwd_name: nil, address: 0)
+  gExportedFuncs.setLen exp.NumberOfFunctions
+  gExports.functions = cast[ptr UncheckedArray[pe_exported_function_t]](addr gExportedFuncs[0])
 
   let offset_to_AddressOfFunctions = pe_rva2ofs(ctx, exp.AddressOfFunctions)
   let offset_to_AddressOfNames = pe_rva2ofs(ctx, exp.AddressOfNames)
