@@ -197,9 +197,6 @@ suite "Testing PE32 dll":
     check imports.dlls[1].functions[4].hint == 1667
     check imports["libeay32.dll"].name == "LIBEAY32.dll"
     check imports["KERNEL32.dll"]["GetLastError"].hint == 592
-    # for i in imports:
-    #   for j in i:
-    #     echo $i, $j
 
   test "PE Exports":
     let exports = pe_exports(addr ctx)
@@ -220,6 +217,43 @@ suite "Testing PE32 dll":
   #   check pe_get_tls_callback(addr ctx) == -2  # TODO: improve test case
 
   test "PE Hashing":
+    const expected: seq[tuple] = @[
+      (
+        name: ".text", 
+        md5: "eafababd0965c5065d072eb91f2f2bd5", 
+        ssdeep: "6144:8LFThsrlPqhXPXpwiKQQg9L8YMcoIyHJPNlK9//ualAcQYLUIaGdY7Y1XiRdQMJ:mFThsrlPqhXPXpwiHQg9L8xcoIyHJfK", 
+        sha1: "49b86dd521afc075d110f50beef81222f2ad1e91", 
+        sha256: "4fccc7a238397ecab0eb141e232bc113cfb3ea1f07caaf492738daf117fda704"
+      ),
+      (
+        name: ".rdata", 
+        md5: "a8caf1e681994659df3456abe5d380b7", 
+        ssdeep: "768:DUUatwMvc13hLLsMACLerrKqHTUvC2Z/4fR+IwaVNhlVUUaq8:DowMvUL93yrrbUvC2x4zVNhlVN", 
+        sha1: "5c8b6f76ffe8d829e6a5558517828b7f5bc183ec", 
+        sha256: "debe2fec75ac3b1252556ae2b7667f1e5fcf1f3462bd3c3108997d85ea17ddfa"
+      ),
+      (
+        name: ".data", 
+        md5: "52a8e05a21681a895d0e1490ebe3841a", 
+        ssdeep: "192:TgSE384TIQr4Xi36vybAYdQO4Ivzts6tPx:T7EM4sQrg4QYdQO4Ms6t", 
+        sha1: "3b57e86e994a91590d9b3696fcc37f956a9e7d14", 
+        sha256: "393e488735eff79de589f4297d32b6f4ae464cf95c6db1de19efdfc8a32a8c01"
+      ),
+      (
+        name: ".rsrc", 
+        md5: "da6e78a8864b62e10a147f49c830bdcb", 
+        ssdeep: "24:etJjIOP3ZtbA3/ODYNHGut3XZf2PNZhiZgaHEy:etyOPphA3/OSHGulJfKZhqgaHE", 
+        sha1: "0b5c615f909d64893ffdce0b1085fa46cc335c2b", 
+        sha256: "12382c48b0e6b40eede71dc9f0a6ee84d45baf3d3fc10e15e3dd03921cb57082"
+      ),
+      (
+        name: ".reloc", 
+        md5: "6d8d3f76f64127600e301692a6a3b542", 
+        ssdeep: "192:TqTZihX72Xp6NhuC8N3fOaiCbbktynsPXaT4LKnbh:Tq8hASk3uCHk0sP+2Kl", 
+        sha1: "3992e79564b1292c64ec62108d79245a6ac53486", 
+        sha256: "c8748ab5fb36ef0552fa90d935ab1d24406b6a1c2820dd08ee8f7f9b41beb3fc"
+      )
+    ]
     check $pe_imphash(addr ctx, LIBPE_IMPHASH_FLAVOR_PEFILE) == "424359274c5f83c7008c38ebd2508fee"
 
     let headerHashes = pe_get_headers_hashes(addr ctx)
@@ -228,4 +262,9 @@ suite "Testing PE32 dll":
     check $headerHashes.optional.md5 == "f42701098bb164092d48f12dfe127290"
 
     let sectHashes = pe_get_sections_hash(addr ctx)
-    check $sectHashes.sections[0].ssdeep == "6144:8LFThsrlPqhXPXpwiKQQg9L8YMcoIyHJPNlK9//ualAcQYLUIaGdY7Y1XiRdQMJ:mFThsrlPqhXPXpwiHQg9L8xcoIyHJfK"  # BUG
+    for i in 0..<sectHashes.count:
+      check $sectHashes.sections[i].name == expected[i].name
+      check $sectHashes.sections[i].md5 == expected[i].md5
+      check $sectHashes.sections[i].ssdeep == expected[i].ssdeep
+      check $sectHashes.sections[i].sha1 == expected[i].sha1
+      check $sectHashes.sections[i].sha256 == expected[i].sha256
