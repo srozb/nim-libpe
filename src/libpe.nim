@@ -39,6 +39,8 @@ var
   peSects: Sections
   gExports: pe_exports_t
   gImports: pe_imports_t
+  gImportedDlls: seq[pe_imported_dll_t]
+  gImportedFunctions: seq[seq[pe_imported_function_t]]
   gCachedData: pe_cached_data_t
   gResNodes: seq[pe_resource_node_t]
 
@@ -56,7 +58,7 @@ proc pe_can_read*(ctx: ptr pe_ctx_t, `ptr`: pointer, size: uint): bool =
 proc pe_load_file_ext*(ctx: ptr pe_ctx_t, path: cstring, options: pe_options_e): pe_err_e =
   result = LIBPE_E_OK
   ctx.path = path
-  mFile = memfiles.open($path, mode=fmReadWriteExisting)  # try return LIBPE_E_OPEN_FAILED
+  mFile = memfiles.open($path, mode=fmRead)  # try return LIBPE_E_OPEN_FAILED
   # return LIBPE_E_NOT_A_FILE if not a file
   ctx.map_size = mFile.size.clong
   ctx.map_addr = mFile.mem  # return LIBPE_E_MMAP_FAILED if error
@@ -542,8 +544,12 @@ proc parse_imported_functions*(ctx: ptr pe_ctx_t, imported_dll: ptr pe_imported_
     hint: uint16
     ofs = offset
     functions = newSeq[pe_imported_function_t](imported_dll.functions_count)
+  
+  gImportedFunctions.add(functions)
+  let nIdx = gImportedFunctions.len - 1
+    # functions = gImportedFunctions
 
-  imported_dll.functions = cast[ptr UncheckedArray[pe_imported_function_t]](addr functions[0])
+  imported_dll.functions = cast[ptr UncheckedArray[pe_imported_function_t]](addr gImportedFunctions[nIdx][0])
 
   for i in 0..<imported_dll.functions_count:
     case ctx.pe.optional_hdr.`type`:
@@ -570,7 +576,6 @@ proc parse_imported_functions*(ctx: ptr pe_ctx_t, imported_dll: ptr pe_imported_
         ordinal = 0
         fname = imp_name.Name
       ofs += sizeof(IMAGE_THUNK_DATA32).uint
-      # break
     of MAGIC_PE64.uint16:
       let thunk = cast[ptr IMAGE_THUNK_DATA64](ctx.map_addr + ofs)
       if not pe_can_read(ctx, thunk, sizeof(IMAGE_THUNK_DATA64).uint):
@@ -594,7 +599,6 @@ proc parse_imported_functions*(ctx: ptr pe_ctx_t, imported_dll: ptr pe_imported_
         ordinal = 0
         fname = imp_name.Name
       ofs += sizeof(IMAGE_THUNK_DATA64).uint
-      # break
     else:
       discard  # TODO: raise exception
 
@@ -611,7 +615,8 @@ proc pe_imports*(ctx: ptr pe_ctx_t): ptr pe_imports_t =
   gImports.dll_count = get_dll_count(ctx)
   if gImports.dll_count == 0: return addr gImports
 
-  var gImportedDlls = newSeq[pe_imported_dll_t](gImports.dll_count)
+  # var gImportedDlls = newSeq[pe_imported_dll_t](gImports.dll_count)
+  gImportedDlls.setLen gImports.dll_count
   gImports.dlls = cast[ptr UncheckedArray[pe_imported_dll_t]](addr gImportedDlls[0])
 
   let dir = pe_directory_by_entry(ctx, IMAGE_DIRECTORY_ENTRY_IMPORT)

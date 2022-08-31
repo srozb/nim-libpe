@@ -108,6 +108,12 @@ suite "Testing PE32+ exe":
     let exports = pe_exports(addr ctx)
     check exports.functions_count == 0
 
+  test "PE Imports":
+    let imports = pe_imports(addr ctx)
+    check imports.dll_count == 34
+    check imports["msvcrt.dll"].functions_count == 27
+    check imports["ntdll.dll"].functions[3].name == "NtQueryInformationToken"
+
   test "PE Entrypoint":
     check ctx.pe.entrypoint == 0x6890
 
@@ -191,6 +197,9 @@ suite "Testing PE32 dll":
     check imports.dlls[1].functions[4].hint == 1667
     check imports["libeay32.dll"].name == "LIBEAY32.dll"
     check imports["KERNEL32.dll"]["GetLastError"].hint == 592
+    # for i in imports:
+    #   for j in i:
+    #     echo $i, $j
 
   test "PE Exports":
     let exports = pe_exports(addr ctx)
@@ -207,8 +216,8 @@ suite "Testing PE32 dll":
     # check pe_calculate_entropy_file(addr ctx) == 6.459661550366066  # original implementation
     check pe_calculate_entropy_file(addr ctx) == 6.459661550366071  # my implementation - close enough
 
-  test "TLS Callback":
-    check pe_get_tls_callback(addr ctx) == -2  # TODO: improve test case
+  # test "TLS Callback":
+  #   check pe_get_tls_callback(addr ctx) == -2  # TODO: improve test case
 
   test "PE Hashing":
     check $pe_imphash(addr ctx, LIBPE_IMPHASH_FLAVOR_PEFILE) == "424359274c5f83c7008c38ebd2508fee"
