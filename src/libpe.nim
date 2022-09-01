@@ -1,9 +1,13 @@
 import std/memFiles
 
-## For entropy
+# For entropy
 import tables
 import math
-##
+#
+
+# For Hashes
+import hashlib/rhash/[md5,sha1,sha256]
+# 
 
 import libpe/pe
 import libpe/hdr_dos
@@ -44,6 +48,11 @@ var
   gImportedFunctions: seq[seq[pe_imported_function_t]]
   gCachedData: pe_cached_data_t
   gResNodes: seq[pe_resource_node_t]
+  gHashStrings: seq[string]
+  gHashHeaders: seq[pe_hash_headers_t]
+  gHashSections: seq[pe_hash_sections_t]
+  gHashSectArray: seq[HashSections]
+  gHashes: seq[pe_hash_t]
 
 proc `+`(a: pointer, s: Natural): pointer = cast[pointer](cast[int](a) + s)
 
@@ -664,22 +673,143 @@ proc pe_calculate_entropy_file*(ctx: ptr pe_ctx_t): cdouble =
     t.inc(cast[ptr char](ctx.map_addr + i)[])
   for x in t.values: result -= x/filesize.int * log2(x/filesize.int)
 
-proc pe_hash_recommended_size*(): uint = 148.uint
+proc pe_hash_recommended_size*(): uint = 148.uint  # TODO or not?
 
+proc pe_hash_raw_data*(output: var cstring, output_size: var uint, alg_name: cstring,
+                       data: ptr uint8, data_size: uint): bool =
+  result = true
+  case $alg_name:  # TODO 1. SSDEEP 2. Template to dedupliacte code or switch/case
+  of "ssdeep":
+    output = "Not Implemented"
+    output_size = output.len.uint
+  of "md5":
+    var hCtx = init[RHASH_MD5]()
+    var digest: Digest
+    let mB = (data.pointer, data_size.int)
+    hCtx.update(mB)
+    hCtx.final(digest)
+    output = ($digest).cstring
+    output_size = output.len.uint
+  of "sha1":
+    var hCtx = init[RHASH_SHA1]()
+    var digest: Digest
+    let mB = (data.pointer, data_size.int)
+    hCtx.update(mB)
+    hCtx.final(digest)
+    output = ($digest).cstring
+    output_size = output.len.uint
+  of "sha256":
+    var hCtx = init[RHASH_SHA256]()
+    var digest: Digest
+    let mB = (data.pointer, data_size.int)
+    hCtx.update(mB)
+    hCtx.final(digest)
+    output = ($digest).cstring
+    output_size = output.len.uint
+  else:
+    return false  # Unsupported hash algorithm
+
+proc get_hashes(output: ptr pe_hash_t, name: cstring, data: ptr uint8, data_size: uint): pe_err_e =
+  for alg in ["md5", "sha1", "sha256", "ssdeep"]:
+    var
+      hash_value = newString(pe_hash_recommended_size())
+      hash_maxsize = pe_hash_recommended_size()
+      hvCstring = hash_value.cstring
+    if not pe_hash_raw_data(hvCstring, hash_maxsize, alg.cstring, data, data_size): return LIBPE_E_HASHING_FAILED
+    gHashStrings.add($hvCstring)
+    case alg:
+    of "md5":
+      output[].md5 = gHashStrings[gHashStrings.len-1].cstring
+    of "sha1":
+      output.sha1 = addr gHashStrings[gHashStrings.len-1][0]
+    of "sha256":
+      output.sha256 = addr gHashStrings[gHashStrings.len-1][0]
+    of "ssdeep":
+      output.ssdeep = addr gHashStrings[gHashStrings.len-1][0]
+    else:
+      discard
+    gHashStrings.add($name)
+    output.name = addr gHashStrings[gHashStrings.len-1][0]
+
+proc get_headers_dos_hash(ctx: ptr pe_ctx_t, output: ptr pe_hash_t): pe_err_e =
+  let data = pe_dos(ctx)
+  let data_size = sizeof(IMAGE_DOS_HEADER).uint
+  return get_hashes(output, "IMAGE_DOS_HEADER", cast [ptr uint8](data), data_size)
+
+proc get_headers_coff_hash(ctx: ptr pe_ctx_t, output: ptr pe_hash_t): pe_err_e =
+  let data = pe_coff(ctx)
+  let data_size = sizeof(IMAGE_COFF_HEADER).uint
+  return get_hashes(output, "IMAGE_COFF_HEADER", cast [ptr uint8](data), data_size)
+
+proc get_headers_optional_hash(ctx: ptr pe_ctx_t, output: ptr pe_hash_t): pe_err_e =
+  let sample = pe_optional(ctx) 
+  let hType = sample[].`type`
+  case hType:
+  of MAGIC_PE32.uint16:
+    let data = sample[].h_32
+    let data_size = sizeof(IMAGE_OPTIONAL_HEADER_32).uint
+    return get_hashes(output, "IMAGE_OPTIONAL_HEADER_32", cast [ptr uint8](data), data_size)
+  of MAGIC_PE64.uint16:
+    let data = sample[].h_64
+    let data_size = sizeof(IMAGE_OPTIONAL_HEADER_64).uint
+    return get_hashes(output, "IMAGE_OPTIONAL_HEADER_64", cast [ptr uint8](data), data_size)
+  else:
+    return  # Unknown header type
+
+proc pe_get_headers_hashes*(ctx: ptr pe_ctx_t): ptr pe_hash_headers_t =
+  if not ctx.cached_data.hash_headers.isNil: return ctx.cached_data.hash_headers
+  var res: pe_hash_headers_t
+  var hash: pe_hash_t
+  gHashes.add(hash)
+  res.dos = addr gHashes[gHashes.len - 1]
+  gHashes.add(hash)
+  res.coff = addr gHashes[gHashes.len - 1]
+  gHashes.add(hash)
+  res.optional = addr gHashes[gHashes.len - 1]
+  var status = LIBPE_E_OK
+  res.err = LIBPE_E_OK
+  status = get_headers_dos_hash(ctx, res.dos)
+  status = get_headers_coff_hash(ctx, res.coff)
+  status = get_headers_optional_hash(ctx, res.optional)
+  gHashHeaders.add(res)
+  return addr gHashHeaders[gHashHeaders.len-1]
+
+proc pe_get_sections_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_sections_t =
+  if not ctx.cached_data.hash_sections.isNil: return ctx.cached_data.hash_sections
+  var res: pe_hash_sections_t
+  var resSect: HashSections
+  gHashSectArray.add(resSect)
+  gHashSections.add(res)
+  res.sections = addr gHashSectArray[gHashSectArray.len - 1]
+  var sectCount = 0
+  for sect in ctx[].sections:
+    let data_size = sect.SizeOfRawData
+    let data = ctx.map_addr + sect.PointerToRawData
+    if data_size == 0: continue
+    if not pe_can_read(ctx, data, data_size): continue  # unable to read sections data
+    var name = sect.Name
+    var section_hash: pe_hash_t
+    var status = get_hashes(addr section_hash, name, cast[ptr uint8](data), data_size)
+    gHashes.add(section_hash)
+    if status != LIBPE_E_OK:
+      res.err = status
+      break
+    res.sections[sectCount] = addr gHashes[gHashes.len - 1]
+    sectCount.inc
+  gHashSections.add(res)
+  return addr gHashSections[gHashSections.len - 1]
+
+proc pe_get_file_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_t =
+  if not ctx.cached_data.hash_file.isNil: return ctx.cached_data.hash_file
+  var hash: pe_hash_t
+  let data_size = pe_filesize(ctx)
+  if get_hashes(addr hash, "PEfile hash".cstring, cast[ptr uint8](ctx.map_addr), data_size.uint) == LIBPE_E_OK:
+    gHashes.add(hash)
+    return addr gHashes[gHashes.len - 1]
 
 {.push dynlib: libpePath.}
 
-
   # Hash
-proc pe_hash_raw_data*(output: cstring, output_size: uint, alg_name: cstring,
-                       data: ptr uint8, data_size: uint): bool {.importc,
-    cdecl, imppeHdr.}
-proc pe_get_headers_hashes*(ctx: ptr pe_ctx_t): ptr pe_hash_headers_t {.importc,
-    cdecl, imppeHdr.}
-proc pe_get_sections_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_sections_t {.importc,
-    cdecl, imppeHdr.}
-proc pe_get_file_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_t {.importc, cdecl,
-    imppeHdr.}
 proc pe_imphash*(ctx: ptr pe_ctx_t, flavor: pe_imphash_flavor_e): cstring {.
     importc, cdecl, imppeHdr.}
 

@@ -137,29 +137,32 @@ suite "Testing PE32+ exe":
     check res.root_node.dirLevel == 1
         
   test "PE Hashing":
-    let hSize = pe_hash_recommended_size()
+    var hSize = pe_hash_recommended_size()
     let sectHashes = pe_get_sections_hash(addr ctx)
 
+    # MD5
     var output = newString(hSize)
-    ## MD5
     output.setLen(32)
-    discard pe_hash_raw_data(output.cstring, hSize, "md5".cstring, 
+    var oCstring = output.cstring
+    check pe_hash_raw_data(oCstring, hSize, "md5".cstring,
       cast[ptr uint8](ctx.map_addr), ctx.map_size.uint)
-    check output == "ef3179d498793bf4234f708d3be28633"
+    check oCstring == "ef3179d498793bf4234f708d3be28633"
 
-    ## SHA1
+    # SHA1
     output.setLen(40)
-    discard pe_hash_raw_data(output.cstring, hSize, "sha1".cstring, 
+    oCstring = output.cstring
+    check pe_hash_raw_data(oCstring, hSize, "sha1".cstring, 
       cast[ptr uint8](ctx.map_addr), ctx.map_size.uint)
-    check output == "dd399ae46303343f9f0da189aee11c67bd868222"
+    check oCstring == "dd399ae46303343f9f0da189aee11c67bd868222"
 
-    ## SHA256
+    # SHA256
     output.setLen(64)
-    discard pe_hash_raw_data(output.cstring, hSize, "sha256".cstring, 
+    oCstring = output.cstring
+    check pe_hash_raw_data(oCstring, hSize, "sha256".cstring, 
       cast[ptr uint8](ctx.map_addr), ctx.map_size.uint)
-    check output == "b53f3c0cd32d7f20849850768da6431e5f876b7bfa61db0aa0700b02873393fa"
+    check oCstring == "b53f3c0cd32d7f20849850768da6431e5f876b7bfa61db0aa0700b02873393fa"
 
-    check $sectHashes.sections[0].ssdeep == "768:0s5+Tb76ffBDDwBL/qRzgNReI3fu6MpJ9lw2c9zxZqz3YM:Z8qpnO/qRUNReI3fu6Uw2mTA" # BUG
+    # check $sectHashes.sections[0].ssdeep == "768:0s5+Tb76ffBDDwBL/qRzgNReI3fu6MpJ9lw2c9zxZqz3YM:Z8qpnO/qRUNReI3fu6Uw2mTA" # Not Implemented
 
 suite "Testing PE32 dll":
   var ctx: pe_ctx_t
@@ -268,3 +271,10 @@ suite "Testing PE32 dll":
       check $sectHashes.sections[i].ssdeep == expected[i].ssdeep
       check $sectHashes.sections[i].sha1 == expected[i].sha1
       check $sectHashes.sections[i].sha256 == expected[i].sha256
+
+  test "File Hashing":
+    let fileHash = pe_get_file_hash(addr ctx)[]
+    check fileHash.md5 == "0054560df6c69d2067689433172088ef"
+    # check fileHash.ssdeep == "" 
+    check fileHash.sha1 == "a30042b77ebd7c704be0e986349030bcdb82857d"
+    check fileHash.sha256 == "72553b45a5a7d2b4be026d59ceb3efb389c686636c6da926ffb0ca653494e750"
