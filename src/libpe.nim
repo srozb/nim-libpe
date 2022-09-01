@@ -7,6 +7,7 @@ import math
 
 # For Hashes
 import hashlib/rhash/[md5,sha1,sha256]
+import libfuzzy/ssdeep
 # 
 
 import libpe/pe
@@ -23,19 +24,6 @@ import libpe/resources
 import libpe/dir_resources
 import libpe/dir_import
 
-when defined(MacOsX):
-  const libpePath = "/usr/local/opt/pev/lib/libpe.1.0.dylib"
-elif defined(mingw):
-  const libpePath = "libpe.dll"
-elif defined(Windows):
-  const libpePath = "libpe.dll"
-  ## TODO: Linux
-
-{.experimental: "codeReordering".}
-
-{.pragma: imppeHdr, header: "pe.h".}
-{.pragma: impError, header: "error.h".}
-{.pragma: impresourcesHdr, header: "resources.h".}
 
 var 
   mFile: MemFile
@@ -680,7 +668,10 @@ proc pe_hash_raw_data*(output: var cstring, output_size: var uint, alg_name: cst
   result = true
   case $alg_name:  # TODO 1. SSDEEP 2. Template to dedupliacte code or switch/case
   of "ssdeep":
-    output = "Not Implemented"
+    var hashOut = newString(FUZZY_MAX_RESULT)
+    discard fuzzy_hash_buf(data, data_size.uint32, hashOut.cstring)
+    hashOut.setLen(hashOut.find('\0'))
+    output = hashOut.cstring
     output_size = output.len.uint
   of "md5":
     var hCtx = init[RHASH_MD5]()
@@ -807,13 +798,8 @@ proc pe_get_file_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_t =
     gHashes.add(hash)
     return addr gHashes[gHashes.len - 1]
 
-{.push dynlib: libpePath.}
-
-  # Hash
-proc pe_imphash*(ctx: ptr pe_ctx_t, flavor: pe_imphash_flavor_e): cstring {.
-    importc, cdecl, imppeHdr.}
-
-{.pop.}
+proc pe_imphash*(ctx: ptr pe_ctx_t, flavor: pe_imphash_flavor_e): cstring =
+  result = "Not implemented"
 
 # Error
 proc pe_error_msg*(error: pe_err_e): cstring =

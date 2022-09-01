@@ -1,7 +1,5 @@
 import def_enums
 
-{.pragma: impdirectoriesHdr, header: "directories.h".}
-
 defineEnum(ImageDirectoryEntry)  ##   Directory entries
 
 const
@@ -23,7 +21,7 @@ const
   IMAGE_DIRECTORY_RESERVED* = (15).ImageDirectoryEntry  ##   Reserved, must be zero
 
 type
-  IMAGE_EXPORT_DIRECTORY* {.bycopy, importc, impdirectoriesHdr.} = object
+  IMAGE_EXPORT_DIRECTORY* = object
     Characteristics*: uint32
     TimeDateStamp*: uint32
     MajorVersion*: uint16
@@ -36,7 +34,7 @@ type
     AddressOfNames*: uint32
     AddressOfNameOrdinals*: uint32
 
-  IMAGE_TLS_DIRECTORY32* {.bycopy, importc, impdirectoriesHdr.} = object
+  IMAGE_TLS_DIRECTORY32* = object
     StartAddressOfRawData*: uint32
     EndAddressOfRawData*: uint32
     AddressOfIndex*: uint32
@@ -44,7 +42,7 @@ type
     SizeOfZeroFill*: uint32  ##   PIMAGE_TLS_CALLBACK
     Characteristics*: uint32  ##   reserved for future use
 
-  IMAGE_TLS_DIRECTORY64* {.bycopy, importc, impdirectoriesHdr.} = object
+  IMAGE_TLS_DIRECTORY64* = object
     StartAddressOfRawData*: uint64
     EndAddressOfRawData*: uint64
     AddressOfIndex*: uint64
@@ -52,6 +50,6 @@ type
     SizeOfZeroFill*: uint32
     Characteristics*: uint32
 
-  IMAGE_DATA_DIRECTORY* {.bycopy, importc, impdirectoriesHdr.} = object
+  IMAGE_DATA_DIRECTORY* = object
     VirtualAddress*: uint32
     Size*: uint32

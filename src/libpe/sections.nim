@@ -43,12 +43,11 @@ const
   IMAGE_SCN_MEM_WRITE* = (-2147483648).SectionCharacteristics  ##   Same as 0x80000000
 
 type
-  Union_sectionsh1* {.union, bycopy, impsectionsHdr,
-                      importc: "union Union_sectionsh1".} = object
+  Union_sectionsh1* {.union.} = object
     PhysicalAddress*: uint32  ##   same value as next field
     VirtualSize*: uint32  ##   same value as next field
   
-  IMAGE_SECTION_HEADER* {.bycopy, importc, impsectionsHdr.} = object  ##   Quoting pecoff_v8.docx: "Entries in the section table are numbered starting from one (1)".
+  IMAGE_SECTION_HEADER* {.importc.} = object  ##   Quoting pecoff_v8.docx: "Entries in the section table are numbered starting from one (1)".
     Name*: cstring
     Misc*: Union_sectionsh1
     VirtualAddress*: uint32
