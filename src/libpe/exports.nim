@@ -21,7 +21,7 @@ type
 #     impexportsHdr.}
 
 iterator items*(x: ptr pe_exports_t): pe_exported_function_t =
-  for i in 0..<x.functions_count: 
+  for i in 0..<x.functions_count:
     if x.functions[i].name.len > 0: yield x.functions[i]
 
 proc `[]`*(x: ptr pe_exports_t, k: string): pe_exported_function_t = 

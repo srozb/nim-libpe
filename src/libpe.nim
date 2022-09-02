@@ -1,4 +1,5 @@
 import std/memFiles
+import system
 
 # For entropy
 import tables
@@ -67,11 +68,28 @@ proc pe_load_file_ext*(ctx: ptr pe_ctx_t, path: cstring, options: pe_options_e):
 proc pe_load_file*(ctx: ptr pe_ctx_t, path: cstring): pe_err_e =
   return pe_load_file_ext(ctx, path, cast[pe_options_e](0))
 
+proc deallocateAll() = 
+  # dealloc(addr peDirs)
+  # dealloc(addr peSects)
+  gExports = pe_exports_t()
+  gExportedFuncs = @[]
+  gImports = pe_imports_t()
+  gImportedDlls = @[]
+  gImportedFunctions = @[]
+  gCachedData = pe_cached_data_t()
+  gResNodes = @[]
+  gHashStrings = @[]
+  gHashHeaders = @[]
+  gHashSections = @[]
+  gHashSectArray = @[]
+  gHashes = @[]
+
+
 proc pe_unload*(ctx: ptr pe_ctx_t): pe_err_e =
-  if ctx.map_addr != mFile.mem:
-      return LIBPE_E_MUNMAP_FAILED
-  else:
-      mFile.close()
+  if ctx.map_addr != mFile.mem: return LIBPE_E_MUNMAP_FAILED
+  mFile.close()
+  deallocateAll()
+  ctx[] = pe_ctx_t()
   LIBPE_E_OK
 
 proc pe_parse*(ctx: ptr pe_ctx_t): pe_err_e =
@@ -174,11 +192,9 @@ proc pe_rva2ofs*(ctx: ptr pe_ctx_t, rva: uint64): uint64 =
       sectSize = sect.SizeOfRawData
     if sect.VirtualAddress <= rva:
       if sect.VirtualAddress + sectSize > rva:
-        result = rva - sect.VirtualAddress
-        return result + sect.PointerToRawData
+        return rva - sect.VirtualAddress + sect.PointerToRawData
   if ctx.pe.num_sections == 1:  # Handle PE with a single section
-    result = rva - ctx.pe.sections[0].VirtualAddress
-    return result + ctx.pe.sections[0].PointerToRawData
+    return rva - ctx.pe.sections[0].VirtualAddress + ctx.pe.sections[0].PointerToRawData
 
 proc pe_ofs2rva*(ctx: ptr pe_ctx_t, ofs: uint64): uint64 =
   if ofs == 0 or ctx.pe.num_sections == 0: return 0
@@ -393,9 +409,12 @@ proc pe_exports*(ctx: ptr pe_ctx_t): ptr pe_exports_t =  # CHECK: ensure cache i
 
   let va = dir.VirtualAddress
   if va == 0: return addr gExports
-
-  var ofs = pe_rva2ofs(ctx, va)
+  # echo "va: " & $va
+  # echo "ofs: " & $pe_rva2ofs(ctx, va)
+  var ofs = pe_rva2ofs(ctx, va)  # BUG for sample: 9525c704ae4ae5ef8a21b705c1df4516031a96e0e0c439bfec47540f73509c97
   var exp = cast[ptr IMAGE_EXPORT_DIRECTORY](ctx.map_addr + ofs)
+  if exp[].NumberOfFunctions > 10000:  # BUG
+    return addr gExports
 
   if not pe_can_read(ctx, exp, sizeof(IMAGE_EXPORT_DIRECTORY).uint): 
     gExports.err = LIBPE_E_EXPORTS_CANT_READ_DIR
@@ -415,6 +434,8 @@ proc pe_exports*(ctx: ptr pe_ctx_t): ptr pe_exports_t =  # CHECK: ensure cache i
   if not pe_can_read(ctx, rva_ptr, sizeof(uint32).uint):
     gExports.err = LIBPE_E_EXPORTS_CANT_READ_RVA
     return addr gExports
+
+  if exp.NumberOfFunctions == 0: return addr gExports  # No exports present
 
   gExports.functions_count = exp.NumberOfFunctions
 
