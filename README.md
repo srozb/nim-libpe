@@ -1,8 +1,8 @@
 # nim-libpe
 
-Nim wrapper for [merces/libpe](https://github.com/merces/libpe/) PE library.
+Nim rewrite of [merces/libpe](https://github.com/merces/libpe/) PE library.
 
-Created by Nimterop to be used by [Peni - Nim PE parsing tool](https://github.com/srozb/peni).
+This library is used by my PE multitool [Peni](https://github.com/srozb/peni).
 
 ## Usage
 
@@ -22,6 +22,4 @@ assert pe_is_pe(addr ctx)
 echo $ctx.pe.entrypoint
 ```
 
-## Build 
-
-nim c --passL:"-lpe"
+For more info consult the test file. 
