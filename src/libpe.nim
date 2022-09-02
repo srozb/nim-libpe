@@ -663,42 +663,39 @@ proc pe_calculate_entropy_file*(ctx: ptr pe_ctx_t): cdouble =
 
 proc pe_hash_recommended_size*(): uint = 148.uint  # TODO or not?
 
-proc pe_hash_raw_data*(output: var cstring, output_size: var uint, alg_name: cstring,
+proc pe_hash_raw_data*(output: cstring, output_size: var uint, alg_name: cstring,
                        data: ptr uint8, data_size: uint): bool =
   result = true
+  var hashOut = newString(pe_hash_recommended_size())
   case $alg_name:  # TODO 1. SSDEEP 2. Template to dedupliacte code or switch/case
   of "ssdeep":
-    var hashOut = newString(FUZZY_MAX_RESULT)
     discard fuzzy_hash_buf(data, data_size.uint32, hashOut.cstring)
-    hashOut.setLen(hashOut.find('\0'))
-    output = hashOut.cstring
-    output_size = output.len.uint
   of "md5":
     var hCtx = init[RHASH_MD5]()
     var digest: Digest
     let mB = (data.pointer, data_size.int)
     hCtx.update(mB)
     hCtx.final(digest)
-    output = ($digest).cstring
-    output_size = output.len.uint
+    hashOut = $digest
   of "sha1":
     var hCtx = init[RHASH_SHA1]()
     var digest: Digest
     let mB = (data.pointer, data_size.int)
     hCtx.update(mB)
     hCtx.final(digest)
-    output = ($digest).cstring
-    output_size = output.len.uint
+    hashOut = $digest
   of "sha256":
     var hCtx = init[RHASH_SHA256]()
     var digest: Digest
     let mB = (data.pointer, data_size.int)
     hCtx.update(mB)
     hCtx.final(digest)
-    output = ($digest).cstring
-    output_size = output.len.uint
+    hashOut = $digest
   else:
     return false  # Unsupported hash algorithm
+  copyMem(output, hashOut.cstring, hashOut.len)
+  output_size = hashOut.len.uint
+
 
 proc get_hashes(output: ptr pe_hash_t, name: cstring, data: ptr uint8, data_size: uint): pe_err_e =
   for alg in ["md5", "sha1", "sha256", "ssdeep"]:
