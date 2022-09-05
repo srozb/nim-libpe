@@ -1,7 +1,5 @@
 import def_enums
 
-{.pragma: impdir_resourcesHdr, header: "dir_resources.h".}
-
 defineEnum(ResourceType)
 
 const
@@ -32,7 +30,7 @@ const
   RT_TOOLBAR* = (241).ResourceType  ##   configuration of toolbars
 
 type
-  IMAGE_RESOURCE_DIRECTORY* {.bycopy, importc, impdir_resourcesHdr.} = object
+  IMAGE_RESOURCE_DIRECTORY* {.bycopy.} = object
     Characteristics*: uint32
     TimeDateStamp*: uint32
     MajorVersion*: uint16
@@ -40,47 +38,43 @@ type
     NumberOfNamedEntries*: uint16
     NumberOfIdEntries*: uint16
 
-  Type_dir_resourcesh1* {.bycopy, impdir_resourcesHdr,
-                          importc: "struct Type_dir_resourcesh1".} = object
+  Type_dir_resourcesh1* {.bycopy.} = object
     NameOffset* {.bitsize: 31.}: uint32
     NameIsString* {.bitsize: 1.}: uint32
 
-  Union_dir_resourcesh1* {.union, bycopy, impdir_resourcesHdr,
-                           importc: "union Union_dir_resourcesh1".} = object
+  Union_dir_resourcesh1* {.bycopy.} = object
     data*: Type_dir_resourcesh1
     Name*: uint32
     Id*: uint16
 
-  Type_dir_resourcesh2* {.bycopy, impdir_resourcesHdr,
-                          importc: "struct Type_dir_resourcesh2".} = object
+  Type_dir_resourcesh2* {.bycopy.} = object
     OffsetToDirectory* {.bitsize: 31.}: uint32
     DataIsDirectory* {.bitsize: 1.}: uint32
 
-  Union_dir_resourcesh2* {.union, bycopy, impdir_resourcesHdr,
-                           importc: "union Union_dir_resourcesh2".} = object
+  Union_dir_resourcesh2* {.bycopy.} = object
     OffsetToData*: uint32
     data*: Type_dir_resourcesh2
 
-  IMAGE_RESOURCE_DIRECTORY_ENTRY* {.bycopy, importc, impdir_resourcesHdr.} = object
+  IMAGE_RESOURCE_DIRECTORY_ENTRY* {.bycopy, header: "dir_resources.h".} = object
     u0*: Union_dir_resourcesh1
     u1*: Union_dir_resourcesh2
 
-  IMAGE_RESOURCE_DATA_STRING* {.bycopy, importc, impdir_resourcesHdr.} = object
+  IMAGE_RESOURCE_DATA_STRING* {.bycopy.} = object
     Length*: uint16
     String*: array[1, cchar]
 
-  IMAGE_RESOURCE_DATA_STRING_U* {.bycopy, importc, impdir_resourcesHdr.} = object
+  IMAGE_RESOURCE_DATA_STRING_U* {.bycopy.} = object
     Length*: uint16  ##   Number of Unicode characters
     String*: array[1, uint16]  ##   Number of Unicode characters
 
   
-  IMAGE_RESOURCE_DATA_ENTRY* {.bycopy, importc, impdir_resourcesHdr.} = object
+  IMAGE_RESOURCE_DATA_ENTRY* {.bycopy.} = object
     OffsetToData*: uint32
     Size*: uint32
     CodePage*: uint32
     Reserved*: uint32
 
-  VS_FIXEDFILEINFO* {.bycopy, importc, impdir_resourcesHdr.} = object
+  VS_FIXEDFILEINFO* {.bycopy.} = object
     dwSignature*: uint32
     dwStrucVersion*: uint32
     dwFileVersionMS*: uint32

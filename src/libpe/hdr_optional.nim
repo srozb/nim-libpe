@@ -1,7 +1,5 @@
 import def_enums
 
-{.pragma: imphdr_optionalHdr, header: "hdr_optional.h".}
-
 defineEnum(WindowsSubsystem) ## REFERENCE: http:msdn.microsoft.com/en-us/library/windows/desktop/ms680339(v=vs.85).aspx
 defineEnum(ImageDllCharacteristics)   ##   REFERENCE: http:msdn.microsoft.com/en-us/library/windows/desktop/ms680339(v=vs.85).aspx
 defineEnum(opt_type_e)
@@ -33,7 +31,7 @@ const
   MAGIC_PE64* = (0x0000020B).opt_type_e  ##   PE32+
 
 type
-  IMAGE_ROM_OPTIONAL_HEADER* {.bycopy, importc, imphdr_optionalHdr.} = object
+  IMAGE_ROM_OPTIONAL_HEADER* {.bycopy.} = object
     Magic*: uint16
     MajorLinkerVersion*: uint8
     MinorLinkerVersion*: uint8
@@ -48,7 +46,7 @@ type
     CprMask*: array[4, uint32]
     GpValue*: uint32
 
-  IMAGE_OPTIONAL_HEADER_32* {.bycopy, importc, imphdr_optionalHdr.} = object  ##   REFERENCE: http:msdn.microsoft.com/en-us/library/windows/desktop/ms680339(v=vs.85).aspx
+  IMAGE_OPTIONAL_HEADER_32* {.bycopy.} = object  ##   REFERENCE: http:msdn.microsoft.com/en-us/library/windows/desktop/ms680339(v=vs.85).aspx
     Magic*: uint16
     MajorLinkerVersion*: uint8
     MinorLinkerVersion*: uint8
@@ -81,7 +79,7 @@ type
     NumberOfRvaAndSizes*: uint32  ##   IMAGE_DATA_DIRECTORY DataDirectory[MAX_DIRECTORIES];
 
   
-  IMAGE_OPTIONAL_HEADER_64* {.bycopy, importc, imphdr_optionalHdr.} = object  ##   REFERENCE: http:msdn.microsoft.com/en-us/library/windows/desktop/ms680339(v=vs.85).aspx
+  IMAGE_OPTIONAL_HEADER_64* {.bycopy.} = object  ##   REFERENCE: http:msdn.microsoft.com/en-us/library/windows/desktop/ms680339(v=vs.85).aspx
     Magic*: uint16
     MajorLinkerVersion*: uint8
     MinorLinkerVersion*: uint8
@@ -112,7 +110,7 @@ type
     LoaderFlags*: uint32  ##   must be zero
     NumberOfRvaAndSizes*: uint32  ##   must be zero
   
-  IMAGE_OPTIONAL_HEADER* {.bycopy, importc, imphdr_optionalHdr.} = object
+  IMAGE_OPTIONAL_HEADER* {.bycopy, importc.} = object
     `type`*: uint16  ##   opt_type_e
     length*: uint  ##   opt_type_e
     h_32*: ptr IMAGE_OPTIONAL_HEADER_32

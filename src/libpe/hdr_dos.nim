@@ -1,5 +1,5 @@
 type
-  IMAGE_DOS_HEADER* {.bycopy, importc, header: "hdr_dos.h".} = object
+  IMAGE_DOS_HEADER* {.bycopy.} = object
     e_magic*: uint16
     e_cblp*: uint16
     e_cp*: uint16

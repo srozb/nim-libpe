@@ -1,7 +1,5 @@
 import def_enums
 
-{.pragma: imphdr_coffHdr, header: "hdr_coff.h".}
-
 defineEnum(MachineType)
 defineEnum(ImageCharacteristics)
 
@@ -46,7 +44,7 @@ const
   IMAGE_FILE_BYTES_REVERSED_HI* = (0x00008000).ImageCharacteristics  ##   Big endian: MSB precedes LSB in memory. Deprecated and should be zero.
 
 type
-  IMAGE_COFF_HEADER* {.bycopy, importc, imphdr_coffHdr.} = object
+  IMAGE_COFF_HEADER* {.bycopy.} = object
     Machine*: uint16  ##  MachineType
     NumberOfSections*: uint16  ##  MachineType
     TimeDateStamp*: uint32

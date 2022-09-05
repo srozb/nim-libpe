@@ -1,8 +1,6 @@
 import error
 import def_enums
 
-{.pragma: imphashesHdr, header: "hashes.h".}
-
 defineEnum(pe_imphash_flavor_e)
 
 const
@@ -12,20 +10,20 @@ const
 type
   HashSections* = array[0..96, ptr pe_hash_t]  # TODO: MAX_SECTIONS
 
-  pe_hash_t* {.bycopy, importc, imphashesHdr.} = object
+  pe_hash_t* {.bycopy.} = object
     name*: cstring
     md5*: cstring
     ssdeep*: cstring
     sha1*: cstring
     sha256*: cstring
 
-  pe_hash_headers_t* {.bycopy, importc, imphashesHdr.} = object
+  pe_hash_headers_t* {.bycopy.} = object
     err*: pe_err_e
     dos*: ptr pe_hash_t
     coff*: ptr pe_hash_t
     optional*: ptr pe_hash_t
 
-  pe_hash_sections_t* {.bycopy, importc, imphashesHdr.} = object
+  pe_hash_sections_t* {.bycopy.} = object
     err*: pe_err_e
     count*: uint32
     sections*: ptr HashSections  # BUG: Can't read all sections

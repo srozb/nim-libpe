@@ -69,8 +69,6 @@ proc pe_load_file*(ctx: ptr pe_ctx_t, path: cstring): pe_err_e =
   return pe_load_file_ext(ctx, path, cast[pe_options_e](0))
 
 proc deallocateAll() = 
-  # dealloc(addr peDirs)
-  # dealloc(addr peSects)
   gExports = pe_exports_t()
   gExportedFuncs = @[]
   gImports = pe_imports_t()

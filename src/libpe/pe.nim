@@ -9,8 +9,6 @@ import resources
 import directories
 import sections
 
-{.pragma: imppeHdr, header: "pe.h".}
-
 defineEnum(pe_option_e)
 
 const
@@ -30,9 +28,9 @@ type
   Sections* = array[0..MAX_SECTIONS, ptr IMAGE_SECTION_HEADER]
   Directories* = array[0..MAX_DIRECTORIES, ptr IMAGE_DATA_DIRECTORY]
 
-  pe_options_e* {.importc, imppeHdr.} = uint16  ##   bitmasked pe_option_e values
+  pe_options_e* = uint16  ##   bitmasked pe_option_e values
 
-  pe_file_t* {.bycopy, importc, imppeHdr.} = object
+  pe_file_t* {.bycopy, header: "pe.h".} = object
     dos_hdr*: ptr IMAGE_DOS_HEADER  ##   DOS header
     signature*: uint32  ##   Signature
     coff_hdr*: ptr IMAGE_COFF_HEADER  ##   COFF header
@@ -47,7 +45,7 @@ type
     entrypoint*: uint64  ##   array up to MAX_SECTIONS
     imagebase*: uint64
 
-  pe_cached_data_t* {.bycopy, importc, imppeHdr.} = object
+  pe_cached_data_t* {.bycopy.} = object
     imports*: ptr pe_imports_t  ##   Parsed directories
     exports*: ptr pe_exports_t  ##   Hashes
     hash_headers*: ptr pe_hash_headers_t  ##   Hashes
@@ -55,7 +53,7 @@ type
     hash_file*: ptr pe_hash_t  ##   Resources
     resources*: ptr pe_resources_t  ##   Resources
   
-  pe_ctx* {.bycopy, imppeHdr, importc: "struct pe_ctx".} = object
+  pe_ctx* {.bycopy.} = object
     stream*: File
     path*: cstring
     map_addr*: pointer
@@ -64,4 +62,4 @@ type
     pe*: pe_file_t
     cached_data*: pe_cached_data_t
 
-  pe_ctx_t* {.importc, imppeHdr.} = pe_ctx
+  pe_ctx_t* = pe_ctx

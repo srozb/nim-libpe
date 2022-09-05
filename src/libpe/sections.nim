@@ -1,7 +1,5 @@
 import def_enums
 
-{.pragma: impsectionsHdr, header: "sections.h".}
-
 defineEnum(SectionCharacteristics)
 
 const

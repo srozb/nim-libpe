@@ -2,21 +2,19 @@ import strutils
 
 import error
 
-{.pragma: impimportsHdr, header: "imports.h".}
-
 type
-  pe_imported_function_t* {.bycopy, importc, impimportsHdr.} = object
+  pe_imported_function_t* {.bycopy.} = object
     name*: cstring
     hint*: uint16
     ordinal*: uint16
 
-  pe_imported_dll_t* {.bycopy, importc, impimportsHdr.} = object
+  pe_imported_dll_t* {.bycopy.} = object
     err*: pe_err_e
     name*: cstring
     functions_count*: uint32
     functions*: ptr UncheckedArray[pe_imported_function_t]   ##   array of imported functions
 
-  pe_imports_t* {.bycopy, importc, impimportsHdr.} = object
+  pe_imports_t* {.bycopy.} = object
     err*: pe_err_e
     dll_count*: uint32
     dlls*: ptr UncheckedArray[pe_imported_dll_t]   ##   array of DLLs

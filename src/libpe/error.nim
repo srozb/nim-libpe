@@ -1,7 +1,6 @@
 import def_enums
 
 {.push hint[ConvFromXtoItselfNotNeeded]: off.}
-{.pragma: imperrorHdr, header: "error.h".}
 
 defineEnum(pe_err_e) 
 
