@@ -70,35 +70,113 @@ suite "Testing PE32+ exe":
   test "get_dll_count func":
     check get_dll_count(addr ctx) == 34
 
-  test "PE Headers":
+  test "PE DOS Header":
     var dosHeader = pe_dos(addr ctx)
     check dosHeader.e_magic == 0x5a4d
     check dosHeader.e_lfanew == 0xf8
+    check dosHeader.e_cblp == 144
+    check dosHeader.e_cp == 3
+    check dosHeader.e_crlc == 0
+    check dosHeader.e_cparhdr == 4
+    check dosHeader.e_minalloc == 0
+    check dosHeader.e_maxalloc == 65535
+    check dosHeader.e_ss == 0
+    check dosHeader.e_sp == 184
+    check dosHeader.e_csum == 0
+    check dosHeader.e_ip == 0
+    check dosHeader.e_cs == 0
+    check dosHeader.e_lfarlc == 64
+    check dosHeader.e_ovno == 0
+    check dosHeader.e_res[0] == 0
+    check dosHeader.e_oemid == 0
+    check dosHeader.e_oeminfo == 0
+    check dosHeader.e_res2[0] == 0
+    check dosHeader.e_lfanew == 248
 
+  test "PE COFF Header":
     var coffHeader = pe_coff(addr ctx)
     check coffHeader.Machine == IMAGE_FILE_MACHINE_AMD64.uint16
     check coffHeader.NumberOfSections == 7
     check coffHeader.TimeDateStamp.Natural == 4215970411
+    check coffHeader.PointerToSymbolTable == 0
+    check coffHeader.NumberOfSymbols == 0
+    check coffHeader.SizeOfOptionalHeader == 240
+    check coffHeader.Characteristics == 34
 
+  test "PE Optional Header":
     var optHeader = pe_optional(addr ctx)
+    check optHeader.h_64.Magic == 523
+    check optHeader.h_64.MajorLinkerVersion == 14
+    check optHeader.h_64.MinorLinkerVersion == 20
+    check optHeader.h_64.SizeOfCode == 0x6a00
+    check optHeader.h_64.SizeOfInitializedData == 0xb200
+    check optHeader.h_64.SizeOfUninitializedData == 0
     check optHeader.h_64.AddressOfEntryPoint == 0x6890
+    check optHeader.h_64.BaseOfCode == 4096
+    check optHeader.h_64.ImageBase == 0x140000000.uint64
+    check optHeader.h_64.SectionAlignment == 4096
+    check optHeader.h_64.FileAlignment == 512
+    check optHeader.h_64.MajorOperatingSystemVersion == 10
+    check optHeader.h_64.MinorOperatingSystemVersion == 0
+    check optHeader.h_64.MajorImageVersion == 10
+    check optHeader.h_64.MinorImageVersion == 0
+    check optHeader.h_64.MajorSubsystemVersion == 10
+    check optHeader.h_64.MinorSubsystemVersion == 0
+    check optHeader.h_64.Reserved1 == 0
+    check optHeader.h_64.SizeOfImage == 0x17000
+    check optHeader.h_64.SizeOfHeaders == 1024
+    check optHeader.h_64.CheckSum == 0x18f8d
+    check optHeader.h_64.Subsystem == 2  ##   WindowsSubsystem
+    check optHeader.h_64.DllCharacteristics == 49504  ##   WindowsSubsystem
+    check optHeader.h_64.SizeOfStackReserve == 0x80000
+    check optHeader.h_64.SizeOfStackCommit == 0xc000
+    check optHeader.h_64.SizeOfHeapReserve == 0x100000
+    check optHeader.h_64.SizeOfHeapCommit == 4096
+    check optHeader.h_64.LoaderFlags == 0  ##   must be zero
+    check optHeader.h_64.NumberOfRvaAndSizes == 16
 
   test "PE Directories":
+    const expected: seq[tuple] = @[
+      (VirtualAddress:0.uint , Size: 0.uint),             # 0
+      (VirtualAddress: 40928.uint, Size: 700.uint),       # 1
+      (VirtualAddress: 61440.uint, Size: 26480.uint),     # 2
+      (VirtualAddress: 53248.uint, Size: 1428.uint),      # 3
+      (VirtualAddress:0.uint , Size: 0.uint),             # 4
+      (VirtualAddress: 90112.uint, Size: 256.uint),       # 5
+      (VirtualAddress: 37200.uint, Size: 84.uint),        # 6
+      (VirtualAddress:0.uint , Size: 0.uint),             # 7
+      (VirtualAddress:0.uint , Size: 0.uint),             # 8
+      (VirtualAddress:0.uint , Size: 0.uint),             # 9
+      (VirtualAddress:33344.uint , Size: 280.uint),       # 10
+      (VirtualAddress:0.uint , Size: 0.uint),             # 11
+      (VirtualAddress:33624.uint , Size: 1312.uint),      # 12
+      (VirtualAddress:39592.uint , Size: 320.uint),       # 13
+    ]
     let peDirsCount = pe_directories_count(addr ctx)
     check peDirsCount == 16
     for dirType, dirVal in ctx.directories:
-      check dirType == 1
-      check dirVal.Size == 700
-      check $pe_directory_name(dirType) == "IMAGE_DIRECTORY_ENTRY_IMPORT"
-      break  # Check only first directory
+      check dirVal.VirtualAddress == expected[dirType.int].VirtualAddress
+      check dirVal.Size == expected[dirType.int].Size
 
   test "PE Sections":
+    const expected: seq[tuple] = @[
+      (Name: ".text", VirtualAddress: 4096, SizeOfRawData: 27136, PointerToRawData: 1024),
+      (Name: ".rdata", VirtualAddress: 32768, SizeOfRawData: 13824, PointerToRawData: 28160),
+      (Name: ".data", VirtualAddress: 49152, SizeOfRawData: 512, PointerToRawData: 41984),
+      (Name: ".pdata", VirtualAddress: 53248, SizeOfRawData: 1536, PointerToRawData: 42496),
+      (Name: ".didat", VirtualAddress: 57344, SizeOfRawData: 512, PointerToRawData: 44032),
+      (Name: ".rsrc", VirtualAddress: 61440, SizeOfRawData: 26624, PointerToRawData: 44544),
+      (Name: ".reloc", VirtualAddress: 90112, SizeOfRawData: 512, PointerToRawData: 71168),
+    ]
     check pe_sections_count(addr ctx) == 7
-    var sec = pe_section_by_name(addr ctx, ".text".cstring)
-    check $sec.Name == ".text"
-    check sec.VirtualAddress == 4096
-    check sec.SizeOfRawData == 27136
-    check sec.PointerToRawData == 1024
+    var i = 0
+    for sec in ctx.sections:
+      let exp = expected[i]
+      check $sec.Name == exp.Name
+      check sec.VirtualAddress == exp.VirtualAddress.uint32
+      check sec.SizeOfRawData == exp.SizeOfRawData.uint32
+      check sec.PointerToRawData == exp.PointerToRawData.uint32
+      i.inc
 
   test "PE Sections iterator":
     for sec in ctx.sections:
@@ -109,10 +187,59 @@ suite "Testing PE32+ exe":
     check exports.functions_count == 0
 
   test "PE Imports":
+    const expected: seq[tuple] = @[
+      (name: "msvcrt.dll", functions_count: 27, first: (name: "_commode", hint:210, ordinal: 0)),
+      (name: "api-ms-win-core-com-l1-1-0.dll", functions_count: 11, first: (name: "CoRegisterClassObject", hint:52, ordinal: 0)),
+      (name: "api-ms-win-core-file-l1-1-0.dll", functions_count: 4, first: (name: "ReadFile", hint:73, ordinal: 0)),
+      (name: "api-ms-win-core-libraryloader-l1-2-0.dll", functions_count: 7, first: (name: "FreeLibrary", hint:12, ordinal: 0)),
+      (name: "api-ms-win-core-wow64-l1-1-1.dll", functions_count: 2, first: (name: "GetSystemWow64Directory2W", hint:1, ordinal: 0)),
+      (name: "api-ms-win-core-synch-l1-2-0.dll", functions_count: 2, first: (name: "InitOnceExecuteOnce", hint:21, ordinal: 0)),
+      (name: "api-ms-win-core-synch-l1-1-0.dll", functions_count: 13, first: (name: "AcquireSRWLockShared", hint:1, ordinal: 0)),
+      (name: "api-ms-win-core-heap-l1-1-0.dll", functions_count: 4, first: (name: "GetProcessHeap", hint:0, ordinal: 0)),
+      (name: "api-ms-win-core-errorhandling-l1-1-0.dll", functions_count: 5, first: (name: "SetErrorMode", hint:12, ordinal: 0)),
+      (name: "api-ms-win-core-processenvironment-l1-1-0.dll", functions_count: 2, first: (name: "GetCommandLineW", hint:5, ordinal: 0)),
+      (name: "api-ms-win-core-processthreads-l1-1-0.dll", functions_count: 7, first: (name: "GetCurrentThreadId", hint:17, ordinal: 0)),
+      (name: "api-ms-win-core-util-l1-1-0.dll", functions_count: 2, first: (name: "EncodePointer", hint:4, ordinal: 0)),
+      (name: "api-ms-win-core-heap-l2-1-0.dll", functions_count: 2, first: (name: "LocalAlloc", hint:2, ordinal: 0)),
+      (name: "api-ms-win-core-sysinfo-l1-1-0.dll", functions_count: 3, first: (name: "GetSystemDirectoryW", hint:15, ordinal: 0)),
+      (name: "api-ms-win-core-winrt-error-l1-1-0.dll", functions_count: 2, first: (name: "RoOriginateErrorW", hint:10, ordinal: 0)),
+      (name: "api-ms-win-core-localization-l1-2-0.dll", functions_count: 1, first: (name: "FormatMessageW", hint:9, ordinal: 0)),
+      (name: "api-ms-win-core-console-l1-2-0.dll", functions_count: 2, first: (name: "FreeConsole", hint:4, ordinal: 0)),
+      (name: "api-ms-win-core-debug-l1-1-0.dll", functions_count: 3, first: (name: "OutputDebugStringW", hint:7, ordinal: 0)),
+      (name: "api-ms-win-core-handle-l1-1-0.dll", functions_count: 1, first: (name: "CloseHandle", hint:0, ordinal: 0)),
+      (name: "api-ms-win-core-path-l1-1-0.dll", functions_count: 1, first: (name: "PathCchAppend", hint:5, ordinal: 0)),
+      (name: "api-ms-win-core-console-l1-1-0.dll", functions_count: 1, first: (name: "WriteConsoleW", hint:19, ordinal: 0)),
+      (name: "api-ms-win-core-string-l1-1-0.dll", functions_count: 2, first: (name: "CompareStringW", hint:2, ordinal: 0)),
+      (name: "api-ms-win-core-rtlsupport-l1-1-0.dll", functions_count: 3, first: (name: "RtlLookupFunctionEntry", hint:10, ordinal: 0)),
+      (name: "api-ms-win-core-profile-l1-1-0.dll", functions_count: 1, first: (name: "QueryPerformanceCounter", hint:0, ordinal: 0)),
+      (name: "api-ms-win-core-string-l2-1-0.dll", functions_count: 1, first: (name: "CharNextW", hint:2, ordinal: 0)),
+      (name: "api-ms-win-core-kernel32-private-l1-1-0.dll", functions_count: 1, first: (name: "Wow64EnableWow64FsRedirection", hint:12, ordinal: 0)),
+      (name: "api-ms-win-core-sidebyside-l1-1-0.dll", functions_count: 5, first: (name: "QueryActCtxW", hint:8, ordinal: 0)),
+      (name: "api-ms-win-downlevel-shlwapi-l1-1-0.dll", functions_count: 1, first: (name: "PathIsRelativeW", hint:41, ordinal: 0)),
+      (name: "api-ms-win-downlevel-shlwapi-l2-1-0.dll", functions_count: 1, first: (name: "SHSetThreadRef", hint:54, ordinal: 0)),
+      (name: "imagehlp.dll", functions_count: 1, first: (name: "ImageDirectoryEntryToData", hint:19, ordinal: 0)),
+      (name: "ntdll.dll", functions_count: 9, first: (name: "NtClose", hint:253, ordinal: 0)),
+      (name: "api-ms-win-core-delayload-l1-1-1.dll", functions_count: 1, first: (name: "ResolveDelayLoadedAPI", hint:1, ordinal: 0)),
+      (name: "api-ms-win-core-delayload-l1-1-0.dll", functions_count: 1, first: (name: "DelayLoadFailureHook", hint:0, ordinal: 0)),
+      (name: "api-ms-win-core-apiquery-l1-1-0.dll", functions_count: 1, first: (name: "ApiSetQueryApiSetPresence", hint:0, ordinal: 0)),    
+    ]
     let imports = pe_imports(addr ctx)
+    var i = 0
+    for dll in imports.items:
+      let exp = expected[i]
+      check dll.err == LIBPE_E_OK
+      check $dll.name == exp.name
+      check dll.functions_count == exp.functions_count.uint
+      check $cast[ptr pe_imported_function_t](dll.functions)[].name == exp.first.name
+      check cast[ptr pe_imported_function_t](dll.functions)[].hint == exp.first.hint.uint16
+      check cast[ptr pe_imported_function_t](dll.functions)[].ordinal == exp.first.ordinal.uint16
+      i.inc
     check imports.dll_count == 34
     check imports["msvcrt.dll"].functions_count == 27
+    check imports["imagehlp.dll"].functions[0].name == "ImageDirectoryEntryToData"
+    check imports["imagehlp.dll"].functions[0].hint == 19.uint16
     check imports["ntdll.dll"].functions[3].name == "NtQueryInformationToken"
+    check imports["ntdll.dll"].functions[3].hint == 480.uint16
 
   test "PE Entrypoint":
     check ctx.pe.entrypoint == 0x6890
@@ -200,6 +327,13 @@ suite "Testing PE32 dll":
     check imports["libeay32.dll"].name == "LIBEAY32.dll"
     check imports["KERNEL32.dll"]["GetLastError"].hint == 592
 
+  test "PE Exports iterator":
+    let exports = pe_exports(addr ctx)
+    for exp in exports.items:
+      check $exp.name == "ERR_load_SSL_strings"
+      check exp.address == 0x301a0.uint
+      break  # only first one
+  
   test "PE Exports":
     let exports = pe_exports(addr ctx)
     check exports.name == "SSLEAY32.dll"
@@ -207,6 +341,9 @@ suite "Testing PE32 dll":
     check exports.functions[3].name == "SSL_CTX_add_session"
     check exports.functions[3].address == 158208
     check exports["ssl_ctx_add_session"].address == 158208
+    check exports.functions[69].name == "SSL_get_verify_mode"
+    check exports.functions[69].address == 142528
+
 
   test "PE Entrypoint":
     check ctx.pe.entrypoint == 0x323b7

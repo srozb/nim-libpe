@@ -11,6 +11,7 @@ Minimal working example based on the original one from Author's GH readme, would
 ```nim
 
 import libpe
+import libpe/pe
 import libpe/error
 
 var ctx: pe_ctx_t
