@@ -110,7 +110,7 @@ type
     LoaderFlags*: uint32  ##   must be zero
     NumberOfRvaAndSizes*: uint32  ##   must be zero
   
-  IMAGE_OPTIONAL_HEADER* {.bycopy, importc.} = object
+  IMAGE_OPTIONAL_HEADER* {.bycopy.} = object
     `type`*: uint16  ##   opt_type_e
     length*: uint  ##   opt_type_e
     h_32*: ptr IMAGE_OPTIONAL_HEADER_32

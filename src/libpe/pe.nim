@@ -30,7 +30,7 @@ type
 
   pe_options_e* = uint16  ##   bitmasked pe_option_e values
 
-  pe_file_t* {.bycopy, header: "pe.h".} = object
+  pe_file_t* {.bycopy.} = object
     dos_hdr*: ptr IMAGE_DOS_HEADER  ##   DOS header
     signature*: uint32  ##   Signature
     coff_hdr*: ptr IMAGE_COFF_HEADER  ##   COFF header
