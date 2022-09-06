@@ -45,8 +45,8 @@ type
     PhysicalAddress*: uint32  ##   same value as next field
     VirtualSize*: uint32  ##   same value as next field
   
-  IMAGE_SECTION_HEADER* {.importc.} = object  ##   Quoting pecoff_v8.docx: "Entries in the section table are numbered starting from one (1)".
-    Name*: cstring
+  IMAGE_SECTION_HEADER* = object  ##   Quoting pecoff_v8.docx: "Entries in the section table are numbered starting from one (1)".
+    Name*: array[8, uint8]
     Misc*: Union_sectionsh1
     VirtualAddress*: uint32
     SizeOfRawData*: uint32
@@ -57,4 +57,7 @@ type
     NumberOfLinenumbers*: uint16           
     Characteristics*: uint32 ##   SectionCharacteristics
 
-
+proc getName*(x: IMAGE_SECTION_HEADER): string =
+  result = newString(8)
+  copyMem(result[0].addr, x.Name.unsafeAddr, 8)
+  if '\0' in result: result.setLen(result.find('\0'))

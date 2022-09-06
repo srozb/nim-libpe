@@ -34,7 +34,7 @@ suite "Testing PE32+ exe":
     check pe_filesize(addr ctx) == 71680
 
   test "Section by RVA":
-    check $pe_rva2section(addr ctx, 4096)[].Name == ".text"
+    check $pe_rva2section(addr ctx, 4096)[].getName == ".text"
 
   test "RVA to Raw File Offset":
     check pe_rva2ofs(addr ctx, 4096) == 1024
@@ -172,7 +172,7 @@ suite "Testing PE32+ exe":
     var i = 0
     for sec in ctx.sections:
       let exp = expected[i]
-      check $sec.Name == exp.Name
+      check sec[].getName() == exp.Name
       check sec.VirtualAddress == exp.VirtualAddress.uint32
       check sec.SizeOfRawData == exp.SizeOfRawData.uint32
       check sec.PointerToRawData == exp.PointerToRawData.uint32
@@ -180,7 +180,7 @@ suite "Testing PE32+ exe":
 
   test "PE Sections iterator":
     for sec in ctx.sections:
-      check sec == pe_section_by_name(addr ctx, sec.Name)
+      check sec == pe_section_by_name(addr ctx, sec[].getName().cstring)
 
   test "PE Exports":
     let exports = pe_exports(addr ctx)

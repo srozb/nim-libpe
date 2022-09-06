@@ -204,9 +204,10 @@ proc pe_ofs2rva*(ctx: ptr pe_ctx_t, ofs: uint64): uint64 =
 
 proc pe_section_name*(ctx: ptr pe_ctx_t, section_hdr: ptr IMAGE_SECTION_HEADER,
                       out_name: var cstring, out_name_size: uint): cstring =
-  # This function is really stupid but I'll leave it for compatibility
-  out_name = section_hdr.Name
-  result = out_name
+  var outname = newString(8)
+  outname = $cast[cstring](section_hdr.Name)
+  # out_name = section_hdr.Name
+  result = outname.cstring
 
 proc pe_machine_type_name*(`type`: MachineType): cstring =
   result = "IMAGE_FILE_MACHINE_UNKNOWN".cstring
@@ -396,7 +397,7 @@ proc pe_directory_by_entry*(ctx: ptr pe_ctx_t, entry: ImageDirectoryEntry): ptr 
 
 proc pe_section_by_name*(ctx: ptr pe_ctx_t, section_name: cstring): ptr IMAGE_SECTION_HEADER =
   for sect in ctx[].sections:
-    if sect.Name == section_name: return sect
+    if sect[].getName() == $section_name: return sect
 
 proc pe_exports*(ctx: ptr pe_ctx_t): ptr pe_exports_t =  # CHECK: ensure cache is working
   if ctx.cached_data.exports != nil: return ctx.cached_data.exports
@@ -794,7 +795,7 @@ proc pe_get_sections_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_sections_t =
     let data = ctx.map_addr + sect.PointerToRawData
     if data_size == 0: continue
     if not pe_can_read(ctx, data, data_size): continue  # unable to read sections data
-    var name = sect.Name
+    var name = sect[].getName().cstring
     var section_hash: pe_hash_t
     var status = get_hashes(addr section_hash, name, cast[ptr uint8](data), data_size)
     gHashes.add(section_hash)
