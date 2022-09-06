@@ -14,8 +14,8 @@ type
     functions_count*: uint32  ##   name of the DLL
     functions*: ptr UncheckedArray[pe_exported_function_t]   ##   array of exported functions
 
-# proc pe_exports_dealloc*(exports: ptr pe_exports_t) {.importc, cdecl,
-#     impexportsHdr.}
+# proc pe_exports_dealloc*(exports: ptr pe_exports_t) =
+#   discard
 
 iterator items*(x: ptr pe_exports_t): pe_exported_function_t =
   for i in 0..<x.functions_count:

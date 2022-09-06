@@ -290,6 +290,9 @@ suite "Testing PE32+ exe":
 
     check $sectHashes.sections[0].ssdeep == "768:0s5+Tb76ffBDDwBL/qRzgNReI3fu6MpJ9lw2c9zxZqz3YM:Z8qpnO/qRUNReI3fu6Uw2mTA"
 
+  test "PE Unload":
+    check pe_unload(addr ctx) == LIBPE_E_OK
+
 suite "Testing PE32 dll":
   var ctx: pe_ctx_t
   var err = pe_load_file(addr ctx, "tests/files/x86dll.bin".cstring)
@@ -414,3 +417,6 @@ suite "Testing PE32 dll":
     check fileHash.ssdeep == "6144:wLFThsrlPqhXPXpwiKQQg9L8YMcoIyHJPNlK9//ualAcQYLUIaGdY7Y1XiRdQMJ7:aFThsrlPqhXPXpwiHQg9L8xcoIyHJfKA" 
     check fileHash.sha1 == "a30042b77ebd7c704be0e986349030bcdb82857d"
     check fileHash.sha256 == "72553b45a5a7d2b4be026d59ceb3efb389c686636c6da926ffb0ca653494e750"
+
+  test "PE Unload":
+    check pe_unload(addr ctx) == LIBPE_E_OK

@@ -42,7 +42,7 @@ type
     NameOffset* {.bitsize: 31.}: uint32
     NameIsString* {.bitsize: 1.}: uint32
 
-  Union_dir_resourcesh1* {.bycopy.} = object
+  Union_dir_resourcesh1* {.union, bycopy.} = object
     data*: Type_dir_resourcesh1
     Name*: uint32
     Id*: uint16
@@ -51,11 +51,11 @@ type
     OffsetToDirectory* {.bitsize: 31.}: uint32
     DataIsDirectory* {.bitsize: 1.}: uint32
 
-  Union_dir_resourcesh2* {.bycopy.} = object
+  Union_dir_resourcesh2* {.union, bycopy.} = object
     OffsetToData*: uint32
     data*: Type_dir_resourcesh2
 
-  IMAGE_RESOURCE_DIRECTORY_ENTRY* {.bycopy, header: "dir_resources.h".} = object
+  IMAGE_RESOURCE_DIRECTORY_ENTRY* {.bycopy.} = object
     u0*: Union_dir_resourcesh1
     u1*: Union_dir_resourcesh2
 

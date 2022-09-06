@@ -35,6 +35,7 @@ var
   gImports: pe_imports_t
   gImportedDlls: seq[pe_imported_dll_t]
   gImportedFunctions: seq[seq[pe_imported_function_t]]
+  gImportedFunctionsName: seq[string]
   gCachedData: pe_cached_data_t
   gResNodes: seq[pe_resource_node_t]
   gHashStrings: seq[string]
@@ -74,6 +75,7 @@ proc deallocateAll() =
   gImports = pe_imports_t()
   gImportedDlls = @[]
   gImportedFunctions = @[]
+  gImportedFunctionsName = @[]
   gCachedData = pe_cached_data_t()
   gResNodes = @[]
   gHashStrings = @[]
@@ -554,8 +556,7 @@ proc parse_imported_functions*(ctx: ptr pe_ctx_t, imported_dll: ptr pe_imported_
   imported_dll.err = LIBPE_E_OK
   imported_dll.functions_count = get_functions_count(ctx, offset)  # Malloc? gImports.dlls.imported_dll.functions_count
 
-  var 
-    fname: cstring
+  var
     is_ordinal: bool
     ordinal: uint16
     hint: uint16
@@ -564,7 +565,6 @@ proc parse_imported_functions*(ctx: ptr pe_ctx_t, imported_dll: ptr pe_imported_
   
   gImportedFunctions.add(functions)
   let nIdx = gImportedFunctions.len - 1
-    # functions = gImportedFunctions
 
   imported_dll.functions = cast[ptr UncheckedArray[pe_imported_function_t]](addr gImportedFunctions[nIdx][0])
 
@@ -591,7 +591,7 @@ proc parse_imported_functions*(ctx: ptr pe_ctx_t, imported_dll: ptr pe_imported_
           return imported_dll.err
         hint = imp_name.Hint
         ordinal = 0
-        fname = imp_name.Name
+        gImportedFunctionsName.add(imp_name.getName())
       ofs += sizeof(IMAGE_THUNK_DATA32).uint
     of MAGIC_PE64.uint16:
       let thunk = cast[ptr IMAGE_THUNK_DATA64](ctx.map_addr + ofs)
@@ -614,7 +614,7 @@ proc parse_imported_functions*(ctx: ptr pe_ctx_t, imported_dll: ptr pe_imported_
           return imported_dll.err
         hint = imp_name.Hint
         ordinal = 0
-        fname = imp_name.Name
+        gImportedFunctionsName.add(imp_name.getName())
       ofs += sizeof(IMAGE_THUNK_DATA64).uint
     else:
       discard  # TODO: raise exception
@@ -622,7 +622,7 @@ proc parse_imported_functions*(ctx: ptr pe_ctx_t, imported_dll: ptr pe_imported_
     imported_dll.functions[i].hint = hint
     imported_dll.functions[i].ordinal = ordinal
 
-    if not is_ordinal: imported_dll.functions[i].name = fname
+    if not is_ordinal: imported_dll.functions[i].name = gImportedFunctionsName[gImportedFunctionsName.len-1].cstring
     else: imported_dll.functions[i].name = ""  # so the name is never nil
 
 proc pe_imports*(ctx: ptr pe_ctx_t): ptr pe_imports_t =
