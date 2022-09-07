@@ -77,7 +77,6 @@ type
     SizeOfHeapCommit*: uint32
     LoaderFlags*: uint32
     NumberOfRvaAndSizes*: uint32  ##   IMAGE_DATA_DIRECTORY DataDirectory[MAX_DIRECTORIES];
-
   
   IMAGE_OPTIONAL_HEADER_64* {.bycopy.} = object  ##   REFERENCE: http:msdn.microsoft.com/en-us/library/windows/desktop/ms680339(v=vs.85).aspx
     Magic*: uint16

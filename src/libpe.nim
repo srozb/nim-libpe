@@ -1,17 +1,8 @@
 import std/memFiles
 import system
 
-# For entropy
-import tables
-import math
-#
-
-# For Hashes
-import hashlib/rhash/[md5,sha1,sha256]
-import libfuzzy/ssdeep
-# 
-
 import libpe/pe
+import libpe/globals
 import libpe/hdr_dos
 import libpe/hdr_coff
 import libpe/hdr_optional
@@ -24,32 +15,18 @@ import libpe/hashes
 import libpe/resources
 import libpe/dir_resources
 import libpe/dir_import
+import libpe/utils
 
+# Entropy
+import tables
+import math
 
-var 
-  mFile: MemFile
-  peDirs: Directories
-  peSects: Sections
-  gExports: pe_exports_t
-  gExportedFuncs: seq[pe_exported_function_t]
-  gImports: pe_imports_t
-  gImportedDlls: seq[pe_imported_dll_t]
-  gImportedFunctions: seq[seq[pe_imported_function_t]]
-  gImportedFunctionsName: seq[string]
-  gCachedData: pe_cached_data_t
-  gResNodes: seq[pe_resource_node_t]
-  gHashStrings: seq[string]
-  gHashHeaders: seq[pe_hash_headers_t]
-  gHashSections: seq[pe_hash_sections_t]
-  gHashSectArray: seq[HashSections]
-  gHashes: seq[pe_hash_t]
-
-proc `+`(a: pointer, s: Natural): pointer = cast[pointer](cast[int](a) + s)
-
-converter ptrToPtrUint(a: pointer): ptr uint = cast[ptr uint](a)
-converter ptrToPtrUint32(a: pointer): ptr uint32 = cast[ptr uint32](a)
+# Hashes
+import hashlib/rhash/[md5,sha1,sha256]
+import libfuzzy/ssdeep
 
 proc pe_can_read*(ctx: ptr pe_ctx_t, `ptr`: pointer, size: uint): bool =
+  ## Determine if the given memory offset is within the mapped PE file.
   let 
     pStart = cast[int](`ptr`)
     pEnd = pStart + size.int
@@ -69,23 +46,8 @@ proc pe_load_file_ext*(ctx: ptr pe_ctx_t, path: cstring, options: pe_options_e):
 proc pe_load_file*(ctx: ptr pe_ctx_t, path: cstring): pe_err_e =
   return pe_load_file_ext(ctx, path, cast[pe_options_e](0))
 
-proc deallocateAll() = 
-  gExports = pe_exports_t()
-  gExportedFuncs = @[]
-  gImports = pe_imports_t()
-  gImportedDlls = @[]
-  gImportedFunctions = @[]
-  gImportedFunctionsName = @[]
-  gCachedData = pe_cached_data_t()
-  gResNodes = @[]
-  gHashStrings = @[]
-  gHashHeaders = @[]
-  gHashSections = @[]
-  gHashSectArray = @[]
-  gHashes = @[]
-
-
 proc pe_unload*(ctx: ptr pe_ctx_t): pe_err_e =
+  ## Unload the memfile from memory as well as clear all the data structures.
   if ctx.map_addr != mFile.mem: return LIBPE_E_MUNMAP_FAILED
   mFile.close()
   deallocateAll()
@@ -211,188 +173,6 @@ proc pe_section_name*(ctx: ptr pe_ctx_t, section_hdr: ptr IMAGE_SECTION_HEADER,
   # out_name = section_hdr.Name
   result = outname.cstring
 
-proc pe_machine_type_name*(`type`: MachineType): cstring =
-  result = "IMAGE_FILE_MACHINE_UNKNOWN".cstring
-  type 
-    Machine = tuple
-      entryId: MachineType
-      name: string
-
-  const entries: seq[Machine] = @[  # TODO: Macro
-    (IMAGE_FILE_MACHINE_AM33, "IMAGE_FILE_MACHINE_AM33"),
-    (IMAGE_FILE_MACHINE_AMD64, "IMAGE_FILE_MACHINE_AMD64"),
-    (IMAGE_FILE_MACHINE_ARM, "IMAGE_FILE_MACHINE_ARM"),
-    (IMAGE_FILE_MACHINE_ARMV7, "IMAGE_FILE_MACHINE_ARMV7"),
-    (IMAGE_FILE_MACHINE_CEE, "IMAGE_FILE_MACHINE_CEE"),
-    (IMAGE_FILE_MACHINE_EBC, "IMAGE_FILE_MACHINE_EBC"),
-    (IMAGE_FILE_MACHINE_I386, "IMAGE_FILE_MACHINE_I386"),
-    (IMAGE_FILE_MACHINE_IA64, "IMAGE_FILE_MACHINE_IA64"),
-    (IMAGE_FILE_MACHINE_M32R, "IMAGE_FILE_MACHINE_M32R"),
-    (IMAGE_FILE_MACHINE_MIPS16, "IMAGE_FILE_MACHINE_MIPS16"),
-    (IMAGE_FILE_MACHINE_MIPSFPU, "IMAGE_FILE_MACHINE_MIPSFPU"),
-    (IMAGE_FILE_MACHINE_MIPSFPU16, "IMAGE_FILE_MACHINE_MIPSFPU16"),
-    (IMAGE_FILE_MACHINE_POWERPC, "IMAGE_FILE_MACHINE_POWERPC"),
-    (IMAGE_FILE_MACHINE_POWERPCFP, "IMAGE_FILE_MACHINE_POWERPCFP"),
-    (IMAGE_FILE_MACHINE_R4000, "IMAGE_FILE_MACHINE_R4000"),
-    (IMAGE_FILE_MACHINE_SH3, "IMAGE_FILE_MACHINE_SH3"),
-    (IMAGE_FILE_MACHINE_SH3DSP, "IMAGE_FILE_MACHINE_SH3DSP"),
-    (IMAGE_FILE_MACHINE_SH4, "IMAGE_FILE_MACHINE_SH4"),
-    (IMAGE_FILE_MACHINE_SH5, "IMAGE_FILE_MACHINE_SH5"),
-    (IMAGE_FILE_MACHINE_THUMB, "IMAGE_FILE_MACHINE_THUMB"),
-    (IMAGE_FILE_MACHINE_WCEMIPSV2, "IMAGE_FILE_MACHINE_WCEMIPSV2")
-  ]
-
-  for e in entries:
-    if e.entryId == `type`: return e.name.cstring
-
-proc pe_image_characteristic_name*(characteristic: ImageCharacteristics): cstring =
-  type 
-    ImageCharacteristicsName = tuple
-      entryId: ImageCharacteristics
-      name: string
-
-  const entries: seq[ImageCharacteristicsName] = @[
-    (IMAGE_FILE_RELOCS_STRIPPED, "IMAGE_FILE_RELOCS_STRIPPED"),
-    (IMAGE_FILE_EXECUTABLE_IMAGE, "IMAGE_FILE_EXECUTABLE_IMAGE"),
-    (IMAGE_FILE_LINE_NUMS_STRIPPED, "IMAGE_FILE_LINE_NUMS_STRIPPED"),
-    (IMAGE_FILE_LOCAL_SYMS_STRIPPED, "IMAGE_FILE_LOCAL_SYMS_STRIPPED"),
-    (IMAGE_FILE_AGGRESSIVE_WS_TRIM, "IMAGE_FILE_AGGRESSIVE_WS_TRIM"),
-    (IMAGE_FILE_LARGE_ADDRESS_AWARE, "IMAGE_FILE_LARGE_ADDRESS_AWARE"),
-    (IMAGE_FILE_RESERVED, "IMAGE_FILE_RESERVED"),
-    (IMAGE_FILE_BYTES_REVERSED_LO, "IMAGE_FILE_BYTES_REVERSED_LO"),
-    (IMAGE_FILE_32BIT_MACHINE, "IMAGE_FILE_32BIT_MACHINE"),
-    (IMAGE_FILE_DEBUG_STRIPPED, "IMAGE_FILE_DEBUG_STRIPPED"),
-    (IMAGE_FILE_REMOVABLE_RUN_FROM_SWAP, "IMAGE_FILE_REMOVABLE_RUN_FROM_SWAP"),
-    (IMAGE_FILE_NET_RUN_FROM_SWAP, "IMAGE_FILE_NET_RUN_FROM_SWAP"),
-    (IMAGE_FILE_SYSTEM, "IMAGE_FILE_SYSTEM"),
-    (IMAGE_FILE_DLL, "IMAGE_FILE_DLL"),
-    (IMAGE_FILE_UP_SYSTEM_ONLY, "IMAGE_FILE_UP_SYSTEM_ONLY"),
-    (IMAGE_FILE_BYTES_REVERSED_HI, "IMAGE_FILE_BYTES_REVERSED_HI")
-  ]
-
-  for e in entries:
-    if e.entryId == characteristic: return e.name.cstring
-
-proc pe_image_dllcharacteristic_name*(characteristic: ImageDllCharacteristics): cstring =
-  type 
-    ImageDllCharacteristicsName = tuple
-      entryId: ImageDllCharacteristics
-      name: string
-
-  const entries: seq[ImageDllCharacteristicsName] = @[
-    (IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE, "IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE"),
-    (IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY, "IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY"),
-    (IMAGE_DLLCHARACTERISTICS_NX_COMPAT, "IMAGE_DLLCHARACTERISTICS_NX_COMPAT"),
-    (IMAGE_DLLCHARACTERISTICS_NO_ISOLATION, "IMAGE_DLLCHARACTERISTICS_NO_ISOLATION"),
-    (IMAGE_DLLCHARACTERISTICS_NO_SEH, "IMAGE_DLLCHARACTERISTICS_NO_SEH"),
-    (IMAGE_DLLCHARACTERISTICS_NO_BIND, "IMAGE_DLLCHARACTERISTICS_NO_BIND"),
-    (IMAGE_DLLCHARACTERISTICS_WDM_DRIVER, "IMAGE_DLLCHARACTERISTICS_WDM_DRIVER"),
-    (IMAGE_DLLCHARACTERISTICS_TERMINAL_SERVER_AWARE, "IMAGE_DLLCHARACTERISTICS_TERMINAL_SERVER_AWARE")
-  ]
-
-  for e in entries:
-    if e.entryId == characteristic: return e.name.cstring
-
-proc pe_windows_subsystem_name*(subsystem: WindowsSubsystem): cstring =
-  result = "IMAGE_SUBSYSTEM_UNKNOWN".cstring
-  type 
-    WindowsSubsystemName = tuple
-      entryId: WindowsSubsystem
-      name: string
-
-  const entries: seq[WindowsSubsystemName] = @[
-    (IMAGE_SUBSYSTEM_NATIVE, "IMAGE_SUBSYSTEM_NATIVE"),
-    (IMAGE_SUBSYSTEM_WINDOWS_GUI, "IMAGE_SUBSYSTEM_WINDOWS_GUI"),
-    (IMAGE_SUBSYSTEM_WINDOWS_CUI, "IMAGE_SUBSYSTEM_WINDOWS_CUI"),
-    (IMAGE_SUBSYSTEM_OS2_CUI, "IMAGE_SUBSYSTEM_OS2_CUI"),
-    (IMAGE_SUBSYSTEM_POSIX_CUI, "IMAGE_SUBSYSTEM_POSIX_CUI"),
-    (IMAGE_SUBSYSTEM_WINDOWS_CE_GUI, "IMAGE_SUBSYSTEM_WINDOWS_CE_GUI"),
-    (IMAGE_SUBSYSTEM_EFI_APPLICATION, "IMAGE_SUBSYSTEM_EFI_APPLICATION"),
-    (IMAGE_SUBSYSTEM_EFI_BOOT_SERVICE_DRIVER, "IMAGE_SUBSYSTEM_EFI_BOOT_SERVICE_DRIVER"),
-    (IMAGE_SUBSYSTEM_EFI_RUNTIME_DRIVER, "IMAGE_SUBSYSTEM_EFI_RUNTIME_DRIVER"),
-    (IMAGE_SUBSYSTEM_EFI_ROM, "IMAGE_SUBSYSTEM_EFI_ROM"),
-    (IMAGE_SUBSYSTEM_XBOX, "IMAGE_SUBSYSTEM_XBOX"),
-    (IMAGE_SUBSYSTEM_WINDOWS_BOOT_APPLICATION, "IMAGE_SUBSYSTEM_WINDOWS_BOOT_APPLICATION")
-  ]
-
-  for e in entries:
-    if e.entryId == subsystem: return e.name.cstring
-
-proc pe_directory_name*(entry: ImageDirectoryEntry): cstring =
-  type 
-    ImageDirectoryEntryName = tuple
-      entryId: ImageDirectoryEntry
-      name: string
-
-  const entries: seq[ImageDirectoryEntryName] = @[
-    (IMAGE_DIRECTORY_ENTRY_EXPORT, "IMAGE_DIRECTORY_ENTRY_EXPORT"),
-    (IMAGE_DIRECTORY_ENTRY_IMPORT, "IMAGE_DIRECTORY_ENTRY_IMPORT"),
-    (IMAGE_DIRECTORY_ENTRY_RESOURCE, "IMAGE_DIRECTORY_ENTRY_RESOURCE"),
-    (IMAGE_DIRECTORY_ENTRY_EXCEPTION, "IMAGE_DIRECTORY_ENTRY_EXCEPTION"),
-    (IMAGE_DIRECTORY_ENTRY_SECURITY, "IMAGE_DIRECTORY_ENTRY_SECURITY"),
-    (IMAGE_DIRECTORY_ENTRY_BASERELOC, "IMAGE_DIRECTORY_ENTRY_BASERELOC"),
-    (IMAGE_DIRECTORY_ENTRY_DEBUG, "IMAGE_DIRECTORY_ENTRY_DEBUG"),
-    (IMAGE_DIRECTORY_ENTRY_ARCHITECTURE, "IMAGE_DIRECTORY_ENTRY_ARCHITECTURE"),
-    (IMAGE_DIRECTORY_ENTRY_GLOBALPTR, "IMAGE_DIRECTORY_ENTRY_GLOBALPTR"),
-    (IMAGE_DIRECTORY_ENTRY_TLS, "IMAGE_DIRECTORY_ENTRY_TLS"),
-    (IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG, "IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG"),
-    (IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT, "IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT"),
-    (IMAGE_DIRECTORY_ENTRY_IAT, "IMAGE_DIRECTORY_ENTRY_IAT"),
-    (IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT, "IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT"),
-    (IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, "IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR"),
-    (IMAGE_DIRECTORY_RESERVED, "IMAGE_DIRECTORY_RESERVED")
-  ]
-
-  for e in entries:
-    if e.entryId == entry: return e.name.cstring
-
-proc pe_section_characteristic_name*(characteristic: SectionCharacteristics): cstring =
-  type 
-    SectionCharacteristicsName = tuple
-      entryId: SectionCharacteristics
-      name: string
-
-  const entries: seq[SectionCharacteristicsName] = @[
-    (IMAGE_SCN_TYPE_NO_PAD, "IMAGE_SCN_TYPE_NO_PAD"),
-    (IMAGE_SCN_CNT_CODE, "IMAGE_SCN_CNT_CODE"),
-    (IMAGE_SCN_CNT_INITIALIZED_DATA, "IMAGE_SCN_CNT_INITIALIZED_DATA"),
-    (IMAGE_SCN_CNT_UNINITIALIZED_DATA, "IMAGE_SCN_CNT_UNINITIALIZED_DATA"),
-    (IMAGE_SCN_LNK_OTHER, "IMAGE_SCN_LNK_OTHER"),
-    (IMAGE_SCN_LNK_INFO, "IMAGE_SCN_LNK_INFO"),
-    (IMAGE_SCN_LNK_REMOVE, "IMAGE_SCN_LNK_REMOVE"),
-    (IMAGE_SCN_LNK_COMDAT, "IMAGE_SCN_LNK_COMDAT"),
-    (IMAGE_SCN_NO_DEFER_SPEC_EXC, "IMAGE_SCN_NO_DEFER_SPEC_EXC"),
-    (IMAGE_SCN_GPREL, "IMAGE_SCN_GPREL"),
-    (IMAGE_SCN_MEM_PURGEABLE, "IMAGE_SCN_MEM_PURGEABLE"),
-    (IMAGE_SCN_MEM_LOCKED, "IMAGE_SCN_MEM_LOCKED"),
-    (IMAGE_SCN_MEM_PRELOAD, "IMAGE_SCN_MEM_PRELOAD"),
-    (IMAGE_SCN_ALIGN_1BYTES, "IMAGE_SCN_ALIGN_1BYTES"),
-    (IMAGE_SCN_ALIGN_2BYTES, "IMAGE_SCN_ALIGN_2BYTES"),
-    (IMAGE_SCN_ALIGN_4BYTES, "IMAGE_SCN_ALIGN_4BYTES"),
-    (IMAGE_SCN_ALIGN_8BYTES, "IMAGE_SCN_ALIGN_8BYTES"),
-    (IMAGE_SCN_ALIGN_16BYTES, "IMAGE_SCN_ALIGN_16BYTES"),
-    (IMAGE_SCN_ALIGN_32BYTES, "IMAGE_SCN_ALIGN_32BYTES"),
-    (IMAGE_SCN_ALIGN_64BYTES, "IMAGE_SCN_ALIGN_64BYTES"),
-    (IMAGE_SCN_ALIGN_128BYTES, "IMAGE_SCN_ALIGN_128BYTES"),
-    (IMAGE_SCN_ALIGN_256BYTES, "IMAGE_SCN_ALIGN_256BYTES"),
-    (IMAGE_SCN_ALIGN_512BYTES, "IMAGE_SCN_ALIGN_512BYTES"),
-    (IMAGE_SCN_ALIGN_1024BYTES, "IMAGE_SCN_ALIGN_1024BYTES"),
-    (IMAGE_SCN_ALIGN_2048BYTES, "IMAGE_SCN_ALIGN_2048BYTES"),
-    (IMAGE_SCN_ALIGN_4096BYTES, "IMAGE_SCN_ALIGN_4096BYTES"),
-    (IMAGE_SCN_ALIGN_8192BYTES, "IMAGE_SCN_ALIGN_8192BYTES"),
-    (IMAGE_SCN_LNK_NRELOC_OVFL, "IMAGE_SCN_LNK_NRELOC_OVFL"),
-    (IMAGE_SCN_MEM_DISCARDABLE, "IMAGE_SCN_MEM_DISCARDABLE"),
-    (IMAGE_SCN_MEM_NOT_CACHED, "IMAGE_SCN_MEM_NOT_CACHED"),
-    (IMAGE_SCN_MEM_NOT_PAGED, "IMAGE_SCN_MEM_NOT_PAGED"),
-    (IMAGE_SCN_MEM_SHARED, "IMAGE_SCN_MEM_SHARED"),
-    (IMAGE_SCN_MEM_EXECUTE, "IMAGE_SCN_MEM_EXECUTE"),
-    (IMAGE_SCN_MEM_READ, "IMAGE_SCN_MEM_READ"),
-    (IMAGE_SCN_MEM_WRITE, "IMAGE_SCN_MEM_WRITE")
-  ]
-
-  for e in entries:
-    if e.entryId == characteristic: return e.name.cstring
-
 proc pe_directory_by_entry*(ctx: ptr pe_ctx_t, entry: ImageDirectoryEntry): ptr IMAGE_DATA_DIRECTORY =
   for dir in ctx[].directories:
     if dir[0] == entry: return dir[1]
@@ -402,6 +182,7 @@ proc pe_section_by_name*(ctx: ptr pe_ctx_t, section_name: cstring): ptr IMAGE_SE
     if sect[].getName() == $section_name: return sect
 
 proc pe_exports*(ctx: ptr pe_ctx_t): ptr pe_exports_t =  # CHECK: ensure cache is working
+  ## Parse the PE exports table.
   if ctx.cached_data.exports != nil: return ctx.cached_data.exports
   gExports.err = LIBPE_E_OK
 
@@ -495,6 +276,7 @@ proc pe_exports*(ctx: ptr pe_ctx_t): ptr pe_exports_t =  # CHECK: ensure cache i
   return addr gExports
 
 proc get_dll_count*(ctx: ptr pe_ctx_t): uint32 =
+  ## Returns the imported DLLs count.
   let dir = pe_directory_by_entry(ctx, IMAGE_DIRECTORY_ENTRY_IMPORT)
   if dir.isNil: return
 
@@ -520,6 +302,7 @@ proc get_dll_count*(ctx: ptr pe_ctx_t): uint32 =
     ofs = aux
 
 proc get_functions_count*(ctx: ptr pe_ctx_t, offset: uint64): uint32 =
+  ## Returns the imported function count.
   var ofs = offset
 
   while true:
@@ -553,6 +336,7 @@ proc get_functions_count*(ctx: ptr pe_ctx_t, offset: uint64): uint32 =
     result.inc
 
 proc parse_imported_functions*(ctx: ptr pe_ctx_t, imported_dll: ptr pe_imported_dll_t, offset: uint64): pe_err_e =
+  ## Parse imported functions details. This is called by `pe_imports`.
   imported_dll.err = LIBPE_E_OK
   imported_dll.functions_count = get_functions_count(ctx, offset)  # Malloc? gImports.dlls.imported_dll.functions_count
 
@@ -626,6 +410,7 @@ proc parse_imported_functions*(ctx: ptr pe_ctx_t, imported_dll: ptr pe_imported_
     else: imported_dll.functions[i].name = ""  # so the name is never nil
 
 proc pe_imports*(ctx: ptr pe_ctx_t): ptr pe_imports_t =
+  ## Parse the PE import table.
   if ctx.cached_data.imports != nil: return ctx.cached_data.imports
   gImports.err = LIBPE_E_OK
 
@@ -675,19 +460,24 @@ proc pe_imports*(ctx: ptr pe_ctx_t): ptr pe_imports_t =
   # TODO: Cache
   
 proc pe_calculate_entropy_file*(ctx: ptr pe_ctx_t): cdouble =
+  ## Count file entropy.
   let filesize = pe_filesize(ctx)
   var t = initCountTable[char]()
   for i in 0..<filesize:
     t.inc(cast[ptr char](ctx.map_addr + i)[])
   for x in t.values: result -= x/filesize.int * log2(x/filesize.int)
 
-proc pe_hash_recommended_size*(): uint = 148.uint  # TODO or not?
+proc pe_hash_recommended_size*(): uint = 148.uint
+  ## Hardcoded value that should suffice to store every hash output.
 
 proc pe_hash_raw_data*(output: cstring, output_size: var uint, alg_name: cstring,
                        data: ptr uint8, data_size: uint): bool =
+  ## Actually hash the data using specified hashing algorithm.
+  ## Output will be copied to the `output` variable. Be sure to allocate enough
+  ## data.
   result = true
   var hashOut = newString(pe_hash_recommended_size())
-  case $alg_name:  # TODO 1. SSDEEP 2. Template to dedupliacte code or switch/case
+  case $alg_name:  # TODO: Deduplicate code
   of "ssdeep":
     discard fuzzy_hash_buf(data, data_size.uint32, hashOut.cstring)
   of "md5":
@@ -718,6 +508,8 @@ proc pe_hash_raw_data*(output: cstring, output_size: var uint, alg_name: cstring
 
 
 proc get_hashes(output: ptr pe_hash_t, name: cstring, data: ptr uint8, data_size: uint): pe_err_e =
+  ## Hash the given data with all the available hash functions. 
+  ## Output will be copied to `output` parameter.
   for alg in ["md5", "sha1", "sha256", "ssdeep"]:
     var
       hash_value = newString(pe_hash_recommended_size())
@@ -740,16 +532,19 @@ proc get_hashes(output: ptr pe_hash_t, name: cstring, data: ptr uint8, data_size
     output.name = addr gHashStrings[gHashStrings.len-1][0]
 
 proc get_headers_dos_hash(ctx: ptr pe_ctx_t, output: ptr pe_hash_t): pe_err_e =
+  ## Hash PE dos header with all the available hash functions.
   let data = pe_dos(ctx)
   let data_size = sizeof(IMAGE_DOS_HEADER).uint
   return get_hashes(output, "IMAGE_DOS_HEADER", cast [ptr uint8](data), data_size)
 
 proc get_headers_coff_hash(ctx: ptr pe_ctx_t, output: ptr pe_hash_t): pe_err_e =
+  ## Hash PE coff header with all the available hash functions.
   let data = pe_coff(ctx)
   let data_size = sizeof(IMAGE_COFF_HEADER).uint
   return get_hashes(output, "IMAGE_COFF_HEADER", cast [ptr uint8](data), data_size)
 
 proc get_headers_optional_hash(ctx: ptr pe_ctx_t, output: ptr pe_hash_t): pe_err_e =
+  ## Hash PE optional header with all the available hash functions.
   let sample = pe_optional(ctx) 
   let hType = sample[].`type`
   case hType:
@@ -765,6 +560,7 @@ proc get_headers_optional_hash(ctx: ptr pe_ctx_t, output: ptr pe_hash_t): pe_err
     return  # Unknown header type
 
 proc pe_get_headers_hashes*(ctx: ptr pe_ctx_t): ptr pe_hash_headers_t =
+  ## Hash all the PE headers with all the available hash functions.
   if not ctx.cached_data.hash_headers.isNil: return ctx.cached_data.hash_headers
   var res: pe_hash_headers_t
   var hash: pe_hash_t
@@ -783,6 +579,7 @@ proc pe_get_headers_hashes*(ctx: ptr pe_ctx_t): ptr pe_hash_headers_t =
   return addr gHashHeaders[gHashHeaders.len-1]
 
 proc pe_get_sections_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_sections_t =
+  ## Hash all the PE sections with all the available hash functions.
   if not ctx.cached_data.hash_sections.isNil: return ctx.cached_data.hash_sections
   var res: pe_hash_sections_t
   var resSect: HashSections
@@ -808,6 +605,7 @@ proc pe_get_sections_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_sections_t =
   return addr gHashSections[gHashSections.len - 1]
 
 proc pe_get_file_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_t =
+  ## Hash the in-memory file with all the available hash functions.
   if not ctx.cached_data.hash_file.isNil: return ctx.cached_data.hash_file
   var hash: pe_hash_t
   let data_size = pe_filesize(ctx)
@@ -816,42 +614,10 @@ proc pe_get_file_hash*(ctx: ptr pe_ctx_t): ptr pe_hash_t =
     return addr gHashes[gHashes.len - 1]
 
 proc pe_imphash*(ctx: ptr pe_ctx_t, flavor: pe_imphash_flavor_e): cstring =
+  ## Generate imports hash as PEFile or Mandiant flavor. Not implemented
   result = "Not implemented"
 
-# Error
-proc pe_error_msg*(error: pe_err_e): cstring =
-  const errors = @[
-    "no error",                 ## LIBPE_E_OK,
-    "no functions found",       ##LIBPE_E_NO_FUNCIONS_FOUND
-    "no callbacks found",       ##LIBPE_E_NO_CALLBACKS_FOUND
-     "error calculating hash",  ## LIBPE_E_HASHING_FAILED
-    "number of functions not equal to number of names", ##LIBPE_E_EXPORTS_FUNC_NEQ_NAMES
-    "cannot read exports directory", ## LIBPE_E_EXPORTS_CANT_READ_DIR
-    "cannot read relative virtual address", ##LIBPE_E_EXPORTS_CANT_READ_RVA
-    "type punning failed",      ## LIBPE_E_TYPE_PUNNING_FAILED
-    "too many sections",        ## LIBPE_E_TOO_MANY_SECTIONS,
-    "too many directories",     ## LIBPE_E_TOO_MANY_DIRECTORIES,
-    "close() failed",           ## LIBPE_E_CLOSE_FAILED,
-    "munmap() failed",          ## LIBPE_E_MUNMAP_FAILED,
-    "mmap() failed",            ## LIBPE_E_MMAP_FAILED,
-    "unsupported image format", ## LIBPE_E_UNSUPPORTED_IMAGE,
-    "invalid signature",        ## LIBPE_E_INVALID_SIGNATURE,
-    "missing OPTIONAL header",  ## LIBPE_E_MISSING_OPTIONAL_HEADER,
-    "missing COFF header",      ## LIBPE_E_MISSING_COFF_HEADER,
-    "invalid e_lfanew",         ## LIBPE_E_INVALID_LFANEW,
-    "not a PE file",            ## LIBPE_E_NOT_A_PE_FILE,
-    "not a regular file",       ## LIBPE_E_NOT_A_FILE,
-    "fstat() failed",           ## LIBPE_E_FSTAT_FAILED,
-    "fdopen() failed",          ## LIBPE_E_FDOPEN_FAILED,
-    "open() failed",            ## LIBPE_E_OPEN_FAILED,
-    "allocation failure"]       ## LIBPE_E_ALLOCATION_FAILURE,
-
-  return errors[error.int.abs].cstring
-
-proc pe_error_print*(stream: File, error: pe_err_e) =
-  stream.write(error.pe_error_msg)
-
-# Misc
+# PE Analysis
 proc pe_fpu_trick*(ctx: ptr pe_ctx_t): bool =
   ## Not implemented - I doubt if this is relevant. To be implemented using yara.
   ## Left for compatibility
@@ -1100,9 +866,3 @@ proc pe_resources*(ctx: ptr pe_ctx_t): ptr pe_resources_t =
 
   result = ctx.cached_data.resources
   
-
-
-
-
-
-

@@ -33,3 +33,4 @@ type
 # proc pe_hash_sections_dealloc*(obj: ptr pe_hash_sections_t) {.importc, cdecl,
 #     imphashesHdr.}
 # proc pe_hash_dealloc*(obj: ptr pe_hash_t) {.importc, cdecl, imphashesHdr.}
+
