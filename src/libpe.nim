@@ -480,6 +480,7 @@ proc pe_hash_raw_data*(output: cstring, output_size: var uint, alg_name: cstring
   case $alg_name:  # TODO: Deduplicate code
   of "ssdeep":
     discard fuzzy_hash_buf(data, data_size.uint32, hashOut.cstring)
+    if '\0' in hashOut: hashOut.setLen hashOut.find('\0')
   of "md5":
     var hCtx = init[RHASH_MD5]()
     var digest: Digest
