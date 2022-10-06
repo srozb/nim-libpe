@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.3.5"
+version       = "0.3.6"
 author        = "srozb"
 description   = "Nim rewrite for libpe library"
 license       = "GPL-3.0"
