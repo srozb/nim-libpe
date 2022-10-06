@@ -1,4 +1,4 @@
-import std/memFiles
+import memFiles
 import pe
 import exports
 import imports
